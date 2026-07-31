@@ -1,4 +1,11 @@
-import { useState, useEffect, useRef } from "react";
+import {
+  useState,
+  useEffect,
+  useId,
+  useRef,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronLeft, ChevronRight, Camera } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -9,7 +16,7 @@ function Placeholder({ className }: { className?: string }) {
     <div
       className={cn(
         "relative w-full h-full bg-muted-foreground/25 flex items-center justify-center",
-        className
+        className,
       )}
       aria-hidden="true"
     >
@@ -19,25 +26,40 @@ function Placeholder({ className }: { className?: string }) {
 }
 
 export function ImageCarousel({
-  images, alt, alts = [], className, onImageClick, priority = false,
-}: { images: string[]; alt: string; alts?: string[]; className?: string; onImageClick?: (index: number) => void; priority?: boolean }) {
+  images,
+  alt,
+  alts = [],
+  className,
+  onImageClick,
+  priority = false,
+}: {
+  images: string[];
+  alt: string;
+  alts?: string[];
+  className?: string;
+  onImageClick?: (index: number) => void;
+  priority?: boolean;
+}) {
   const { t } = useTranslation();
+  const helpId = useId();
   const [idx, setIdx] = useState(0);
   const [loaded, setLoaded] = useState<Record<number, boolean>>({});
-  const touchRef = useRef<{ x: number; y: number; moved: boolean; pointerType: string } | null>(null);
+  const touchRef = useRef<{ x: number; y: number; moved: boolean; pointerType: string } | null>(
+    null,
+  );
   const swipedRef = useRef(false);
   const list = images.filter(Boolean);
   const count = list.length;
-  const pointerDown = (e: React.PointerEvent) => {
+  const pointerDown = (e: ReactPointerEvent) => {
     if (e.pointerType === "mouse" && e.button !== 0) return;
     touchRef.current = { x: e.clientX, y: e.clientY, moved: false, pointerType: e.pointerType };
   };
-  const pointerMove = (e: React.PointerEvent) => {
+  const pointerMove = (e: ReactPointerEvent) => {
     const s = touchRef.current;
     if (!s) return;
     if (Math.abs(e.clientX - s.x) > 8) s.moved = true;
   };
-  const pointerUp = (e: React.PointerEvent) => {
+  const pointerUp = (e: ReactPointerEvent) => {
     const s = touchRef.current;
     touchRef.current = null;
     if (!s || count <= 1) return;
@@ -51,7 +73,6 @@ export function ImageCarousel({
       swipedRef.current = true;
     }
   };
-
 
   // Preload neighboring images for snappier paging
   useEffect(() => {
@@ -69,59 +90,102 @@ export function ImageCarousel({
     return <Placeholder className={className} />;
   }
 
-  const go = (delta: number, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const go = (delta: number) => {
     setIdx((i) => (i + delta + count) % count);
   };
 
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (count <= 1) return;
+
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      go(-1);
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault();
+      go(1);
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      setIdx(0);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      setIdx(count - 1);
+    }
+  };
+
   const isLoaded = !!loaded[idx];
-  const Wrapper = (onImageClick ? "button" : "div") as "button";
+  const currentAlt = alts[idx]?.trim() || alt;
+  const image = (
+    <img
+      src={optimizedImageUrl(list[idx], 960)}
+      srcSet={optimizedImageSrcSet(list[idx])}
+      sizes="(min-width: 768px) 60vw, 100vw"
+      alt={currentAlt}
+      className="w-full h-full object-cover"
+      loading={priority ? "eager" : "lazy"}
+      // @ts-expect-error -- fetchpriority is valid HTML, not yet in React types
+      fetchpriority={priority ? "high" : "auto"}
+      decoding="async"
+      onLoad={() => setLoaded((prev) => ({ ...prev, [idx]: true }))}
+    />
+  );
 
   return (
     <div
-      className={cn("relative w-full h-full overflow-hidden bg-muted group touch-pan-y select-none", className)}
+      className={cn(
+        "relative w-full h-full overflow-hidden bg-muted group touch-pan-y select-none",
+        className,
+      )}
       onPointerDown={pointerDown}
       onPointerMove={pointerMove}
       onPointerUp={pointerUp}
-      onPointerCancel={() => { touchRef.current = null; }}
+      onPointerCancel={() => {
+        touchRef.current = null;
+      }}
     >
-
       {/* Subtle shimmer skeleton — no icon, so it doesn't flash a fake placeholder */}
       {!isLoaded && (
         <div className="absolute inset-0 z-0 animate-pulse bg-gradient-to-br from-muted via-muted/60 to-muted" />
       )}
 
-      {/* Without a click handler (mobile) the image is plain content, not a control. */}
-      <Wrapper
-        {...(onImageClick
-          ? {
-              type: "button" as const,
-              onClick: (e: React.MouseEvent) => {
-                e.stopPropagation();
-                if (swipedRef.current) { swipedRef.current = false; return; }
-                onImageClick(idx);
-              },
-              "aria-label": t("gallery.open_full"),
+      {onImageClick ? (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            if (swipedRef.current) {
+              swipedRef.current = false;
+              return;
             }
-          : {})}
-        className={cn(
-          "relative z-[1] w-full h-full p-0 m-0 border-0 bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-          onImageClick && "cursor-pointer",
-        )}
-      >
-        <img
-          src={optimizedImageUrl(list[idx], 960)}
-          srcSet={optimizedImageSrcSet(list[idx])}
-          sizes="(min-width: 768px) 60vw, 100vw"
-          alt={alts[idx]?.trim() || alt}
-          className="w-full h-full object-cover"
-          loading={priority ? "eager" : "lazy"}
-          // @ts-expect-error -- fetchpriority is valid HTML, not yet in React types
-          fetchpriority={priority ? "high" : "auto"}
-          decoding="async"
-          onLoad={() => setLoaded((prev) => ({ ...prev, [idx]: true }))}
-        />
-      </Wrapper>
+            onImageClick(idx);
+          }}
+          onKeyDown={handleKeyDown}
+          aria-label={t("gallery.control_label", {
+            name: alt,
+            current: idx + 1,
+            count,
+          })}
+          aria-describedby={count > 1 ? helpId : undefined}
+          aria-keyshortcuts={count > 1 ? "ArrowLeft ArrowRight Home End Enter" : "Enter"}
+          className="relative z-[1] w-full h-full p-0 m-0 border-0 bg-transparent cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        >
+          {image}
+        </button>
+      ) : (
+        <div className="relative z-[1] w-full h-full">{image}</div>
+      )}
+
+      {onImageClick && count > 1 && (
+        <p id={helpId} className="sr-only">
+          {t("gallery.control_hint")}
+        </p>
+      )}
+      <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {t("gallery.image_status", {
+          current: idx + 1,
+          count,
+          description: currentAlt,
+        })}
+      </p>
 
       {/* All UI overlays appear only after the image is visible, so users never see
           chrome floating over an empty placeholder. */}
@@ -129,43 +193,56 @@ export function ImageCarousel({
         <>
           {/* image counter intentionally removed */}
 
-
-          <button
-            type="button"
-            onClick={(e) => go(-1, e)}
-            aria-label={t("gallery.prev")}
-            className="hidden md:flex absolute left-2 top-1/2 -translate-y-1/2 z-20 h-8 w-8 rounded-full bg-white/90 hover:bg-white text-[var(--kth-navy)] shadow-md items-center justify-center transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+          <span
+            aria-hidden="true"
+            data-gallery-action="previous"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={(event) => {
+              event.stopPropagation();
+              go(-1);
+            }}
+            className="hidden md:flex absolute left-2 top-1/2 -translate-y-1/2 z-20 h-8 w-8 cursor-pointer rounded-full bg-white/90 hover:bg-white text-[var(--kth-navy)] shadow-md items-center justify-center transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
           >
             <ChevronLeft className="h-5 w-5" strokeWidth={2.5} aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            onClick={(e) => go(1, e)}
-            aria-label={t("gallery.next")}
-            className="hidden md:flex absolute right-2 top-1/2 -translate-y-1/2 z-20 h-8 w-8 rounded-full bg-white/90 hover:bg-white text-[var(--kth-navy)] shadow-md items-center justify-center transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+          </span>
+          <span
+            aria-hidden="true"
+            data-gallery-action="next"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={(event) => {
+              event.stopPropagation();
+              go(1);
+            }}
+            className="hidden md:flex absolute right-2 top-1/2 -translate-y-1/2 z-20 h-8 w-8 cursor-pointer rounded-full bg-white/90 hover:bg-white text-[var(--kth-navy)] shadow-md items-center justify-center transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
           >
             <ChevronRight className="h-5 w-5" strokeWidth={2.5} aria-hidden="true" />
-          </button>
+          </span>
 
-          {/* Pagination dots in a pill — buttons keep a 24×24 hit target with a smaller visual dot */}
-          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-0.5 px-1 py-0.5 rounded-full bg-black/55 backdrop-blur-sm shadow-md">
+          {/* The visual controls retain their pointer targets. Keyboard and assistive
+              technology use the single image control above. */}
+          <div
+            aria-hidden="true"
+            className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-0.5 px-1 py-0.5 rounded-full bg-black/55 backdrop-blur-sm shadow-md"
+          >
             {list.map((_, i) => (
-              <button
+              <span
                 key={i}
-                type="button"
-                onClick={(e) => { e.stopPropagation(); setIdx(i); }}
-                aria-label={t("gallery.go_to", { n: i + 1 })}
-                aria-current={i === idx ? "true" : undefined}
-                className="h-6 w-6 inline-flex items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                data-gallery-index={i}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setIdx(i);
+                }}
+                className="h-6 w-6 inline-flex cursor-pointer items-center justify-center rounded-full"
               >
                 <span
                   className={cn(
                     "block h-2 w-2 rounded-full transition-all",
-                    i === idx ? "bg-white" : "bg-white/55 hover:bg-white/80"
+                    i === idx ? "bg-white" : "bg-white/55 hover:bg-white/80",
                   )}
                   aria-hidden="true"
                 />
-              </button>
+              </span>
             ))}
           </div>
         </>

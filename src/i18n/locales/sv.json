@@ -87,7 +87,10 @@
     "about_button": "Om lokalen",
     "book_now": "Boka nu",
     "opens_new_tab_sr": "(öppnas i en ny flik)",
-    "hide_description": "Dölj text"
+    "hide_description": "Dölj text",
+    "header_filters_label": "{{name}}, rubrik och snabbfilter",
+    "actions_label": "Åtgärder för {{name}}",
+    "roving_group_help": "Använd vänster och höger pil för att navigera i gruppen."
   },
   "occupancy": {
     "right_now": "Just nu",
@@ -108,7 +111,10 @@
     "next": "Nästa bild",
     "close": "Stäng bildgalleri",
     "go_to": "Gå till bild {{n}}",
-    "image_number": "Bild {{n}}"
+    "image_number": "Bild {{n}}",
+    "control_label": "Bildgalleri för {{name}}, bild {{current}} av {{count}}",
+    "control_hint": "Använd vänster och höger pil för att byta bild. Tryck Enter för att öppna bilden i full storlek.",
+    "image_status": "Bild {{current}} av {{count}}: {{description}}"
   },
   "languages": {
     "sv": "Svenska",

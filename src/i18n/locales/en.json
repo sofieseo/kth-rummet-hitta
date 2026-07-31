@@ -87,7 +87,10 @@
     "about_button": "About the space",
     "book_now": "Book now",
     "opens_new_tab_sr": "(opens in a new tab)",
-    "hide_description": "Hide text"
+    "hide_description": "Hide text",
+    "header_filters_label": "{{name}}, heading and quick filters",
+    "actions_label": "Actions for {{name}}",
+    "roving_group_help": "Use the left and right arrow keys to navigate within the group."
   },
   "occupancy": {
     "right_now": "Right now",
@@ -108,7 +111,10 @@
     "next": "Next image",
     "close": "Close image gallery",
     "go_to": "Go to image {{n}}",
-    "image_number": "Image {{n}}"
+    "image_number": "Image {{n}}",
+    "control_label": "Image gallery for {{name}}, image {{current}} of {{count}}",
+    "control_hint": "Use the left and right arrow keys to change image. Press Enter to open the image full size.",
+    "image_status": "Image {{current}} of {{count}}: {{description}}"
   },
   "languages": {
     "sv": "Swedish",

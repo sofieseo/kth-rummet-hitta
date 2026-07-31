@@ -180,6 +180,67 @@ test.describe("Filtering flow", () => {
     await expect(filters.getByRole("button", { name: "Dold skärm" })).toHaveCount(0);
   });
 
+  test("each result card uses three composite Tab stops", async ({ page }) => {
+    await openApp(page);
+
+    const card = page.locator("#space-angdomen");
+    const title = card.getByRole("button", { name: "Ångdomen", exact: true });
+    const description = card.getByText("Testbeskrivning för Ångdomen.");
+
+    await title.focus();
+    await expect(title).toBeFocused();
+    await expect(title).toHaveAttribute("aria-expanded", "false");
+    await expect(description).toBeHidden();
+
+    await page.keyboard.press("Enter");
+    await expect(title).toHaveAttribute("aria-expanded", "true");
+    await expect(description).toBeVisible();
+
+    await page.keyboard.press("ArrowRight");
+    await expect(card.getByRole("button", { name: "Enskilt", exact: true })).toBeFocused();
+    await page.keyboard.press("ArrowRight");
+    await expect(card.getByRole("button", { name: "Tillsammans", exact: true })).toBeFocused();
+
+    await page.keyboard.press("Tab");
+    const gallery = card.getByRole("button", { name: /Bildgalleri för Ångdomen/ });
+    await expect(gallery).toBeFocused();
+    await expect(gallery).toHaveAccessibleName(/bild 1 av 2/i);
+
+    // The visible mouse/touch controls remain usable without becoming extra
+    // keyboard or screen-reader controls.
+    await gallery.hover();
+    await card.locator('[data-gallery-action="next"]').click();
+    await expect(gallery).toHaveAccessibleName(/bild 2 av 2/i);
+    await card.locator('[data-gallery-index="0"]').click();
+    await expect(gallery).toHaveAccessibleName(/bild 1 av 2/i);
+    await expect(gallery).toBeFocused();
+
+    await page.keyboard.press("ArrowRight");
+    await expect(gallery).toHaveAccessibleName(/bild 2 av 2/i);
+    await expect(gallery).toBeFocused();
+
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("dialog", { name: "Bildgalleri" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(gallery).toBeFocused();
+
+    await page.keyboard.press("Tab");
+    const mapLink = card.getByRole("link", { name: /Visa på karta/ });
+    const scheduleLink = card.getByRole("link", { name: /Se schema/ });
+    await expect(mapLink).toBeFocused();
+
+    await page.keyboard.press("ArrowRight");
+    await expect(scheduleLink).toBeFocused();
+
+    await page.keyboard.press("Tab");
+    await expect(
+      page.locator("#space-sodra-arkaden").getByRole("button", {
+        name: "Södra arkaden",
+        exact: true,
+      }),
+    ).toBeFocused();
+  });
+
   test("mobile filters keep a draft, discard it on Escape, and apply explicitly", async ({
     page,
   }) => {

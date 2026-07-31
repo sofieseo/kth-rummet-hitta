@@ -184,23 +184,23 @@ function space(overrides) {
     name_en: overrides.name_en ?? null,
     space_kind: overrides.space_kind ?? "study",
     category: "",
-    description: overrides.description ?? "",
+    description: overrides.description ?? `Testbeskrivning för ${overrides.name}.`,
     description_en: null,
-    description_inline: true,
+    description_inline: overrides.description_inline ?? false,
     intent: overrides.intent ?? ["enskilt"],
     noise: overrides.noise ?? ["Tyst"],
     equipment: overrides.equipment ?? [],
-    facilities: [],
+    facilities: overrides.facilities ?? [],
     lokaltyp: overrides.lokaltyp ?? ["Öppen studieyta"],
-    image_url: null,
-    images: [],
-    image_alts: [],
-    image_alts_en: [],
-    map_url: null,
+    image_url: overrides.image_url ?? null,
+    images: overrides.images ?? [],
+    image_alts: overrides.image_alts ?? [],
+    image_alts_en: overrides.image_alts_en ?? [],
+    map_url: overrides.map_url ?? null,
     map_url_en: null,
-    booking_url: null,
+    booking_url: overrides.booking_url ?? null,
     booking_url_en: null,
-    group_booking_url: null,
+    group_booking_url: overrides.group_booking_url ?? null,
     group_booking_url_en: null,
     group_booking_label: null,
     group_booking_label_en: null,
@@ -234,6 +234,10 @@ const spaces = [
     name_en: "The Steam Dome",
     intent: ["enskilt", "tillsammans", "fokus"],
     equipment: ["Dator"],
+    images: ["/__e2e__/image-blue.svg", "/__e2e__/image-gold.svg"],
+    image_alts: ["Blå testbild", "Gul testbild"],
+    map_url: "#map-angdomen",
+    booking_url: "#schedule-angdomen",
     capacity: 12,
     sort_order: 10,
   }),
@@ -403,6 +407,18 @@ const server = createServer((request, response) => {
 
   if (url.pathname === "/health") {
     sendJson(response, 200, { ok: true });
+    return;
+  }
+
+  if (url.pathname === "/__e2e__/image-blue.svg" || url.pathname === "/__e2e__/image-gold.svg") {
+    const color = url.pathname.endsWith("gold.svg") ? "#f2c94c" : "#007fa3";
+    response.writeHead(200, {
+      "content-type": "image/svg+xml; charset=utf-8",
+      "cache-control": "no-store",
+    });
+    response.end(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="960" height="640" viewBox="0 0 960 640"><rect width="960" height="640" fill="${color}"/></svg>`,
+    );
     return;
   }
 
