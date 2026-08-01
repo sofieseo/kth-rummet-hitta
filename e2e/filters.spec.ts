@@ -249,9 +249,7 @@ test.describe("Filtering flow", () => {
     ).toBeFocused();
   });
 
-  test("desktop card media fills the card before and after description expansion", async ({
-    page,
-  }) => {
+  test("desktop card media uses a 3:2 minimum and fills the expanded card", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await openApp(page);
 
@@ -274,7 +272,7 @@ test.describe("Filtering flow", () => {
     ]);
     expect(collapsedCard).not.toBeNull();
     expect(collapsedMedia).not.toBeNull();
-    expect((collapsedMedia?.width ?? 0) / (collapsedMedia?.height ?? 1)).toBeCloseTo(16 / 9, 1);
+    expect((collapsedMedia?.width ?? 0) / (collapsedMedia?.height ?? 1)).toBeCloseTo(3 / 2, 1);
     expect(Math.abs((collapsedMedia?.y ?? 0) - (collapsedCard?.y ?? 0))).toBeLessThan(1);
     expect(
       Math.abs(

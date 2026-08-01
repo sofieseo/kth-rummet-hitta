@@ -738,7 +738,7 @@ export function SpaceCard({
 
         <div
           data-card-media
-          className="order-1 w-full shrink-0 self-start aspect-[3/2] overflow-hidden rounded-t-2xl md:order-none md:col-start-2 md:row-start-1 md:row-span-2 md:aspect-video md:self-stretch md:rounded-t-none md:rounded-l-none md:rounded-tr-2xl"
+          className="order-1 w-full shrink-0 self-start aspect-[3/2] overflow-hidden rounded-t-2xl md:order-none md:col-start-2 md:row-start-1 md:row-span-2 md:self-stretch md:rounded-t-none md:rounded-l-none md:rounded-tr-2xl"
         >
           <ImageCarousel
             images={images}
