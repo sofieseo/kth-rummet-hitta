@@ -715,7 +715,12 @@ export function SpaceCard({
       )}
     >
       <div className="flex flex-col md:grid md:grid-cols-[2fr_3fr] md:grid-rows-[1fr_auto] items-stretch gap-0">
-        <div className="min-w-0 flex flex-col gap-4 md:gap-5 p-3 md:col-start-1 md:row-start-1 md:p-6">
+        <div
+          className={cn(
+            "order-2 min-w-0 flex flex-col gap-4 p-3 md:order-none md:col-start-1 md:row-start-1 md:gap-5 md:p-6",
+            renderedButtons.length > 0 && "pb-0 md:pb-6",
+          )}
+        >
           {layout.map((k) => renderSection(k))}
 
           {sanitizedDescription && (
@@ -731,7 +736,10 @@ export function SpaceCard({
           )}
         </div>
 
-        <div className="w-full shrink-0 aspect-[3/2] overflow-hidden md:col-start-2 md:row-start-1 md:row-span-2 md:self-start md:rounded-tr-2xl">
+        <div
+          data-card-media
+          className="order-1 w-full shrink-0 self-start aspect-[3/2] overflow-hidden rounded-t-2xl md:order-none md:col-start-2 md:row-start-1 md:row-span-2 md:rounded-t-none md:rounded-l-none md:rounded-tr-2xl"
+        >
           <ImageCarousel
             images={images}
             alts={localizedAlts}
@@ -754,7 +762,7 @@ export function SpaceCard({
             }
             aria-describedby={renderedButtons.length > 1 ? actionHelpId : undefined}
             onBlurCapture={actionRoving.onBlurCapture}
-            className="flex flex-wrap items-center justify-end gap-2 p-3 pt-0 md:col-start-1 md:row-start-2 md:p-6 md:pt-0"
+            className="order-3 flex flex-wrap items-center justify-end gap-2 px-3 pb-3 pt-4 md:order-none md:col-start-1 md:row-start-2 md:p-6 md:pt-0"
           >
             {renderedButtons.length > 1 && (
               <p id={actionHelpId} className="sr-only">

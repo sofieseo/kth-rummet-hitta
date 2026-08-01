@@ -285,6 +285,39 @@ test.describe("Filtering flow", () => {
     expect(dialogErrors).toEqual([]);
   });
 
+  test("mobile result cards keep the historical image-first layout", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openApp(page);
+
+    const card = page.locator("#space-angdomen");
+    const media = card.locator("[data-card-media]");
+    const heading = card.getByRole("heading", { name: "Ångdomen" });
+    const actions = card.getByRole("toolbar", { name: /Åtgärder för Ångdomen/ });
+
+    await card.scrollIntoViewIfNeeded();
+    await expect(media).toBeVisible();
+    await expect(heading).toBeVisible();
+    await expect(actions).toBeVisible();
+
+    const [cardBox, mediaBox, headingBox, actionsBox] = await Promise.all([
+      card.boundingBox(),
+      media.boundingBox(),
+      heading.boundingBox(),
+      actions.boundingBox(),
+    ]);
+
+    expect(cardBox).not.toBeNull();
+    expect(mediaBox).not.toBeNull();
+    expect(headingBox).not.toBeNull();
+    expect(actionsBox).not.toBeNull();
+    expect(Math.abs((mediaBox?.y ?? 0) - (cardBox?.y ?? 0))).toBeLessThan(1);
+    expect(Math.abs((mediaBox?.width ?? 0) - (cardBox?.width ?? 0))).toBeLessThan(1);
+    expect((mediaBox?.y ?? 0) + (mediaBox?.height ?? 0)).toBeLessThan(headingBox?.y ?? 0);
+    expect((headingBox?.y ?? 0) + (headingBox?.height ?? 0)).toBeLessThan(actionsBox?.y ?? 0);
+    await expect(media).toHaveCSS("border-top-left-radius", "16px");
+    await expect(media).toHaveCSS("border-top-right-radius", "16px");
+  });
+
   test("mobile filters remain reachable in a tall, scrolled iframe", async ({ page }) => {
     await page.setViewportSize({ width: 430, height: 844 });
     await page.route("http://localhost:8080/__e2e__/iframe", (route) =>
