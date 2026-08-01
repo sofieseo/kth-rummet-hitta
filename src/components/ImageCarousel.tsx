@@ -120,7 +120,7 @@ export function ImageCarousel({
       srcSet={optimizedImageSrcSet(list[idx])}
       sizes="(min-width: 768px) 60vw, 100vw"
       alt={currentAlt}
-      className="w-full h-full object-cover"
+      className="w-full h-full object-cover object-center"
       loading={priority ? "eager" : "lazy"}
       // @ts-expect-error -- fetchpriority is valid HTML, not yet in React types
       fetchpriority={priority ? "high" : "auto"}

@@ -232,6 +232,11 @@ const spaces = [
     id: "angdomen",
     name: "Ångdomen",
     name_en: "The Steam Dome",
+    description:
+      "Testbeskrivning för Ångdomen.<br><br>" +
+      "Lokalen har flera olika studieytor och den här längre texten verifierar att bilden fyller hela kortets höjd när beskrivningen fälls ut. ".repeat(
+        7,
+      ),
     intent: ["enskilt", "tillsammans", "fokus"],
     equipment: ["Dator"],
     images: ["/__e2e__/image-blue.svg", "/__e2e__/image-gold.svg"],

@@ -241,6 +241,62 @@ test.describe("Filtering flow", () => {
     ).toBeFocused();
   });
 
+  test("desktop card media fills the card before and after description expansion", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await openApp(page);
+
+    const card = page.locator("#space-angdomen");
+    const media = card.locator("[data-card-media]");
+    const image = media.locator("img").first();
+    const title = card.getByRole("button", { name: "Ångdomen", exact: true });
+
+    await card.scrollIntoViewIfNeeded();
+    await expect(media).toBeVisible();
+    await expect(image).toBeVisible();
+
+    const [collapsedCard, collapsedMedia] = await Promise.all([
+      card.boundingBox(),
+      media.boundingBox(),
+    ]);
+    expect(collapsedCard).not.toBeNull();
+    expect(collapsedMedia).not.toBeNull();
+    expect((collapsedMedia?.width ?? 0) / (collapsedMedia?.height ?? 1)).toBeCloseTo(16 / 9, 1);
+    expect(Math.abs((collapsedMedia?.y ?? 0) - (collapsedCard?.y ?? 0))).toBeLessThan(1);
+    expect(
+      Math.abs(
+        (collapsedMedia?.y ?? 0) +
+          (collapsedMedia?.height ?? 0) -
+          ((collapsedCard?.y ?? 0) + (collapsedCard?.height ?? 0)),
+      ),
+    ).toBeLessThan(1);
+    await expect(image).toHaveCSS("object-fit", "cover");
+    await expect(image).toHaveCSS("object-position", "50% 50%");
+
+    await title.click();
+    await expect(title).toHaveAttribute("aria-expanded", "true");
+
+    const [expandedCard, expandedMedia, expandedImage] = await Promise.all([
+      card.boundingBox(),
+      media.boundingBox(),
+      image.boundingBox(),
+    ]);
+    expect((expandedCard?.height ?? 0) - (collapsedCard?.height ?? 0)).toBeGreaterThan(50);
+    expect(Math.abs((expandedMedia?.y ?? 0) - (expandedCard?.y ?? 0))).toBeLessThan(1);
+    expect(
+      Math.abs(
+        (expandedMedia?.y ?? 0) +
+          (expandedMedia?.height ?? 0) -
+          ((expandedCard?.y ?? 0) + (expandedCard?.height ?? 0)),
+      ),
+    ).toBeLessThan(1);
+    expect(Math.abs((expandedMedia?.height ?? 0) - (expandedCard?.height ?? 0))).toBeLessThan(1);
+    expect(Math.abs((expandedImage?.y ?? 0) - (expandedMedia?.y ?? 0))).toBeLessThan(1);
+    expect(Math.abs((expandedImage?.height ?? 0) - (expandedMedia?.height ?? 0))).toBeLessThan(1);
+    expect(Math.abs((expandedMedia?.width ?? 0) - (collapsedMedia?.width ?? 0))).toBeLessThan(1);
+  });
+
   test("mobile filters keep a draft, discard it on Escape, and apply explicitly", async ({
     page,
   }) => {
