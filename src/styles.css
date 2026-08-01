@@ -110,6 +110,14 @@
   box-shadow: 0 -8px 24px -4px rgba(0, 0, 0, 0.1), 0 4px 8px -2px rgba(0, 0, 0, 0.05);
 }
 
+@utility result-card-shadow {
+  box-shadow: 0 3px 18px -4px rgba(0, 0, 0, 0.18);
+}
+
+@utility result-card-shadow-hover {
+  box-shadow: 0 5px 24px -4px rgba(0, 0, 0, 0.22);
+}
+
 @media (min-width: 1024px) {
   .study-place-filter-panel {
     position: sticky;

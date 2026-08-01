@@ -203,8 +203,12 @@ test.describe("Filtering flow", () => {
 
     await page.keyboard.press("Tab");
     const gallery = card.getByRole("button", { name: /Bildgalleri för Ångdomen/ });
+    const firstDot = card.locator('[data-gallery-index="0"]');
+    const secondDot = card.locator('[data-gallery-index="1"]');
     await expect(gallery).toBeFocused();
     await expect(gallery).toHaveAccessibleName(/bild 1 av 2/i);
+    await expect(firstDot).toHaveAttribute("data-gallery-focus", "true");
+    await expect(firstDot.locator("span")).toHaveClass(/ring-2/);
 
     // The visible mouse/touch controls remain usable without becoming extra
     // keyboard or screen-reader controls.
@@ -218,6 +222,9 @@ test.describe("Filtering flow", () => {
     await page.keyboard.press("ArrowRight");
     await expect(gallery).toHaveAccessibleName(/bild 2 av 2/i);
     await expect(gallery).toBeFocused();
+    await expect(firstDot).not.toHaveAttribute("data-gallery-focus", "true");
+    await expect(secondDot).toHaveAttribute("data-gallery-focus", "true");
+    await expect(secondDot.locator("span")).toHaveClass(/ring-2/);
 
     await page.keyboard.press("Enter");
     await expect(page.getByRole("dialog", { name: "Bildgalleri" })).toBeVisible();
@@ -228,6 +235,7 @@ test.describe("Filtering flow", () => {
     const mapLink = card.getByRole("link", { name: /Visa på karta/ });
     const scheduleLink = card.getByRole("link", { name: /Se schema/ });
     await expect(mapLink).toBeFocused();
+    await expect(secondDot).not.toHaveAttribute("data-gallery-focus", "true");
 
     await page.keyboard.press("ArrowRight");
     await expect(scheduleLink).toBeFocused();
@@ -255,6 +263,10 @@ test.describe("Filtering flow", () => {
     await card.scrollIntoViewIfNeeded();
     await expect(media).toBeVisible();
     await expect(image).toBeVisible();
+
+    const cardShadow = await card.evaluate((element) => getComputedStyle(element).boxShadow);
+    expect(cardShadow).not.toBe("none");
+    expect(cardShadow).not.toContain("0px 0px 0px 1px");
 
     const [collapsedCard, collapsedMedia] = await Promise.all([
       card.boundingBox(),

@@ -9,7 +9,7 @@ export function SpaceCardSkeleton() {
   return (
     <div
       aria-hidden="true"
-      className="bg-card rounded-2xl card-shadow overflow-hidden animate-fade-in"
+      className="bg-card rounded-2xl result-card-shadow overflow-hidden animate-fade-in"
     >
       <div className="flex flex-col md:grid md:grid-cols-[2fr_3fr] items-stretch gap-0">
         <div className="order-2 md:order-1 min-w-0 flex flex-col gap-4 md:gap-5 p-3 md:p-6">

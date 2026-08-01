@@ -44,6 +44,7 @@ export function ImageCarousel({
   const helpId = useId();
   const [idx, setIdx] = useState(0);
   const [loaded, setLoaded] = useState<Record<number, boolean>>({});
+  const [galleryHasFocus, setGalleryHasFocus] = useState(false);
   const touchRef = useRef<{ x: number; y: number; moved: boolean; pointerType: string } | null>(
     null,
   );
@@ -159,6 +160,8 @@ export function ImageCarousel({
             onImageClick(idx);
           }}
           onKeyDown={handleKeyDown}
+          onFocus={() => setGalleryHasFocus(true)}
+          onBlur={() => setGalleryHasFocus(false)}
           aria-label={t("gallery.control_label", {
             name: alt,
             current: idx + 1,
@@ -166,7 +169,7 @@ export function ImageCarousel({
           })}
           aria-describedby={count > 1 ? helpId : undefined}
           aria-keyshortcuts={count > 1 ? "ArrowLeft ArrowRight Home End Enter" : "Enter"}
-          className="relative z-[1] w-full h-full p-0 m-0 border-0 bg-transparent cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          className="relative z-[1] w-full h-full p-0 m-0 border-0 bg-transparent cursor-pointer focus-visible:outline-none"
         >
           {image}
         </button>
@@ -217,35 +220,43 @@ export function ImageCarousel({
           >
             <ChevronRight className="h-5 w-5" strokeWidth={2.5} aria-hidden="true" />
           </span>
-
-          {/* The visual controls retain their pointer targets. Keyboard and assistive
-              technology use the single image control above. */}
-          <div
-            aria-hidden="true"
-            className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-0.5 px-1 py-0.5 rounded-full bg-black/55 backdrop-blur-sm shadow-md"
-          >
-            {list.map((_, i) => (
-              <span
-                key={i}
-                data-gallery-index={i}
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  setIdx(i);
-                }}
-                className="h-6 w-6 inline-flex cursor-pointer items-center justify-center rounded-full"
-              >
-                <span
-                  className={cn(
-                    "block h-2 w-2 rounded-full transition-all",
-                    i === idx ? "bg-white" : "bg-white/55 hover:bg-white/80",
-                  )}
-                  aria-hidden="true"
-                />
-              </span>
-            ))}
-          </div>
         </>
+      )}
+
+      {/* The dots are the visible focus indicator for the composite gallery control.
+          They remain pointer targets, while keyboard and assistive technology use
+          the single image button above. A single-image gallery shows its dot only
+          while focused so every Tab stop has a visible indicator. */}
+      {isLoaded && (count > 1 || galleryHasFocus) && (
+        <div
+          aria-hidden="true"
+          className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-0.5 px-1 py-0.5 rounded-full bg-black/55 backdrop-blur-sm shadow-md"
+        >
+          {list.map((_, i) => (
+            <span
+              key={i}
+              data-gallery-index={i}
+              data-gallery-focus={galleryHasFocus && i === idx ? "true" : undefined}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={(event) => {
+                event.stopPropagation();
+                setIdx(i);
+              }}
+              className="h-6 w-6 inline-flex cursor-pointer items-center justify-center rounded-full"
+            >
+              <span
+                className={cn(
+                  "block h-2 w-2 rounded-full transition-all",
+                  i === idx ? "bg-white" : "bg-white/55 hover:bg-white/80",
+                  galleryHasFocus &&
+                    i === idx &&
+                    "ring-2 ring-white ring-offset-2 ring-offset-black/55",
+                )}
+                aria-hidden="true"
+              />
+            </span>
+          ))}
+        </div>
       )}
     </div>
   );
