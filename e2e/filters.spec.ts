@@ -307,6 +307,17 @@ test.describe("Filtering flow", () => {
     expect(Math.abs((expandedMedia?.width ?? 0) - (collapsedMedia?.width ?? 0))).toBeLessThan(1);
   });
 
+  test("study seat icon matches the 14px card chip icons", async ({ page }) => {
+    await openApp(page);
+
+    const icon = page.locator("#space-angdomen [data-capacity-icon]");
+    await expect(icon).toBeVisible();
+
+    const box = await icon.boundingBox();
+    expect(box?.width).toBeCloseTo(14, 0);
+    expect(box?.height).toBeCloseTo(14, 0);
+  });
+
   test("mobile filters keep a draft, discard it on Escape, and apply explicitly", async ({
     page,
   }) => {
