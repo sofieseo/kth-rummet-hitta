@@ -270,7 +270,7 @@ export function exportAnalyticsToExcel(
 
   // Sök utan träff med förslag
   if (extra?.emptyWithAlternatives?.length) {
-    const emptyAltRows = [["Filterkombination", "Antal sökningar", "Närmaste alternativ"]];
+    const emptyAltRows: (string | number)[][] = [["Filterkombination", "Antal sökningar", "Närmaste alternativ"]];
     for (const e of extra.emptyWithAlternatives) {
       emptyAltRows.push([e.filters, e.count, e.suggestion]);
     }
