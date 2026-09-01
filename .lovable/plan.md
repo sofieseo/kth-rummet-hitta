@@ -1,42 +1,78 @@
-# Utredning: långsam laddning och publika databasanrop
+# Förbättra admin-statistiken: tomma sökningar, efterfrågan vs utbud och trender
 
-## Vad jag har verifierat i koden
+## Mål
+Göra statistikfliken i admin mer användbar för att förstå vad studenterna faktiskt efterfrågar — inte bara vilka knappar de klickar på.
 
-**1. Startsidans loader väntar på databasen innan sidan kan renderas.**
-I `src/routes/index.tsx` gör `loader` fem `await`-anrop mot databasen innan HTML skickas:
+Vi använder **endast befintliga data** i `analytics_events` och `spaces`. Inga nya tabeller eller nya spårningshändelser.
+
+## Vad vi vet redan nu
+- 2 369 sidvisningar, 1 270 filterändringar, 69 tomma sökningar finns i databasen.
+- Admin-läget hämtar redan hela listan med lokaler, filterkategorier och filteralternativ.
+- `AnalyticsTab` hämtar idag bara `analytics_events`; övrig data finns tillgänglig via props.
+
+## Förslag 1: Tomma sökningar med närmaste alternativ
+
+**Idé:** När en filtrering ger noll träffar vill vi se *vad* studenten kan släppa för att få träffar igen.
+
+**Utförande:**
+- För varje `empty_results`-händelse visas den aktiva filtreringen (sökord, kategori, ljudnivå, läge etc.).
+- Systemet testar att ta bort ett filter i taget och räknar hur många lokaler som då matchar, med hjälp av befintliga `matchesSpace()` och lokal-listan.
+- Det bästa alternativet presenteras: ”0 träffar. Om du tar bort *Tyst* visas 12 lokaler.”
+- De vanligaste tomma kombinationerna listas med sitt bästa alternativ.
+
+**Varför det är användbart:** Avslöjar om studenterna sätter ihop filter som aldrig kan ge träff — eller om ett enskilt filter är för snävt.
+
+## Förslag 2: Efterfrågan vs utbud per filter
+
+**Idé:** Visa vilka filtervärden som är populära men underrepresenterade i lokalerna.
+
+**Utförande:**
+- För varje filtervärde som dyker upp i `filter_change`-händelser räknas:
+  - **Efterfrågan:** antal gånger det valts.
+  - **Utbudet:** antal lokaler i `spaces` som uppfyller just det värdet.
+- Resultatet visas som en tvåraders lista med staplar eller som en tabell, sorterat efter störst skillnad.
+- Separata vyer för kategorier (Studieplats/Skapande och paus/Service och faciliteter), ljudnivå, utrustning, faciliteter och läge.
+
+**Varför det är användbart:** Om många söker ”Skrivbordslampa” men få lokaler har det, är det ett tydligt signalvärde för framtida inredning eller uppdatering av filter.
+
+## Förslag 3: Trender över tid
+
+**Idé:** Se hur efterfrågan förändras dag för dag.
+
+**Utförande:**
+- Gruppera `filter_change` och `empty_results` efter datum inom vald period.
+- Linjediagram med topp-5 eller topp-10 sökord / filtervärden över tid.
+- En separat kurva för antal tomma sökningar per dag.
+- Exporteras till Excel-bladet "Trender".
+
+**Varför det är användbart:** Gör det möjligt att upptäcka toppar inför tentaperioder eller när vissa filter plötsligt blir populära.
+
+## Tekniskt upplägg
 
 ```text
-fetchOgImageUrl()                      -> app_settings (delningsbild)
-fetchUiText("landing_title", "sv")     -> app_settings
-fetchUiText("landing_title", "en")     -> app_settings   (samma rader som ovan)
-fetchUiText("share_description", "sv") -> app_settings
-fetchUiText("share_description", "en") -> app_settings   (samma rader som ovan)
+AdminPage
+├── redan inläst: spaces, categories, filterOptions
+└── AnalyticsTab (utökas med props för spaces/categories/options)
+    ├── befintlig query: analytics_events
+    ├── ny useMemo: emptyResultsWithAlternatives
+    ├── ny useMemo: demandVsSupply
+    ├── ny useMemo: trendsOverTime
+    └── ny UI: tre nya sektioner + uppdaterad Excel-export
 ```
 
-Det här tillkom när delningsbild, rubrik och delningsbeskrivning gjordes redigerbara i admin — alltså precis i den period du pekar ut. Före det hade startsidan ingen blockerande loader.
+### Komponenter/filer som ändras
+- `src/components/AnalyticsTab.tsx` – nya beräkningar och nya UI-sektioner.
+- `src/lib/analyticsExport.ts` – nya Excel-blad för tomma sökningar, efterfrågan/utbud och trender.
+- Eventuellt små justeringar i `src/routes/admin.tsx` för att skicka ner `spaces`, `categories` och `filterOptions` till `AnalyticsTab`.
 
-Två följdproblem:
-- `fetchUiText` hämtar redan både svensk och engelsk rad i ett anrop, så två av fyra anrop är rena dubbletter.
-- Loaders i TanStack körs isomorft: samma fem anrop görs även i webbläsaren, inte bara på servern.
-- Anropen går via webbläsarklienten (`@/integrations/supabase/client`) i stället för en serverfunktion, och de ligger inuti `try/catch` — misslyckas eller hänger de syns inget fel, sidan bara väntar.
+### Prestanda
+- All beräkning sker klient-side på max 50 000 analytics-rader.
+- Med cirka 60 lokaler och hundratals filteralternativ är antalet jämförelser litet; inga serverfunktioner eller databasändringar krävs.
 
-**2. Många separata publika anrop vid första renderingen.**
-Utöver lokaler, filteralternativ och filterkategorier gör varje inställningshook sin egen fråga mot `app_settings`: underhållsläge, beta-märke, driftsmeddelande, rubrik/ingress/brödtext (en fråga per textnyckel), dolda ikoner, platsikon, kortlayout, menylänkar och beläggningsinställningar. Det blir ett tiotal parallella publika anrop mot samma tabell vid varje sidladdning.
+## Avgränsningar
+- Inga nya spårningshändelser eller tabeller (enligt önskemål).
+- Ingen förändring av studentvyn.
+- Trender är begränsade till den data som redan loggas (t.ex. sökord och filterval).
 
-**3. Mätningar just nu (från byggmiljön)**
-- Databasen svarar på ~0,1–0,18 s.
-- `https://spacefinder.lib.kth.se/` svarar med första byte på ~0,6 s.
-- Sidans `<title>` i produktion är den gamla ("Hitta studieplats på KTH Biblioteket"), inte den som ligger i admin. Det tyder på att den publicerade versionen är äldre än de senaste ändringarna, alternativt att loaderns databasanrop inte lyckas i produktionsmiljön.
-
-## Vad som inte är bevisat
-
-Jag kan inte återskapa 7-sekunderstimeouten härifrån. Sannolik förklaring är punkt 1 — en blockerande loader som väntar på databasen — men om anropen faktiskt timeoutar måste orsaken bekräftas (nätverksväg från publiceringsmiljön, saknade miljövariabler i produktionsbygget, eller att laddningen sker i webbläsaren och blockeras av nätverket hos KTH).
-
-## Förslag till nästa steg (ingen kod ändrad än)
-
-1. Bekräfta var timeouten uppstår: jämför serverns svarstid (curl mot sajten) med webbläsarens nätverkspanel på spacefinder-domänen, och notera vilket anrop som tar 7 s.
-2. Slå ihop loaderns fem anrop till ett enda (en fråga mot `app_settings` som hämtar alla fyra nycklarna) och lägg det i en serverfunktion med kort timeout och fallback, så att sidan aldrig kan blockeras mer än någon sekund.
-3. Samla övriga inställningsanrop till en gemensam "app-inställningar"-fråga i stället för en per hook.
-4. Publicera om och verifiera att `<title>` och delningsbild i produktion matchar admin.
-
-Säg till om du vill att jag genomför punkt 2–4.
+## Nästa steg
+Om planen godkänns börjar jag med att skicka ner `spaces`, `categories` och `filterOptions` till `AnalyticsTab`, sedan bygga de tre nya analyserna och sist uppdatera Excel-exporten.
