@@ -46,6 +46,12 @@ function endOfDay(d: Date): Date {
   return x;
 }
 
+const KIND_LABELS: Record<string, string> = {
+  study: "Studieplats",
+  creative: "Skapande och paus",
+  service: "Service och faciliteter",
+};
+
 export function AnalyticsTab() {
   const [preset, setPreset] = useState<PresetKey>("7d");
   const [customFrom, setCustomFrom] = useState<Date | undefined>(() => {
@@ -152,12 +158,6 @@ export function AnalyticsTab() {
     return Object.entries(counts).map(([id, v]) => ({ id, ...v })).sort((a, b) => b.count - a.count).slice(0, 10);
   }, [rows]);
 
-  const KIND_LABELS: Record<string, string> = {
-    study: "Studieplats",
-    creative: "Skapande och paus",
-    service: "Service och faciliteter",
-  };
-
   const kindBreakdown = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const r of rows) {
@@ -170,7 +170,6 @@ export function AnalyticsTab() {
     return Object.entries(counts)
       .map(([k, v]) => ({ key: k, label: KIND_LABELS[k] ?? k, count: v, pct: total ? v / total : 0 }))
       .sort((a, b) => b.count - a.count);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows]);
 
   const bookingKinds = useMemo(() => {
@@ -211,7 +210,6 @@ export function AnalyticsTab() {
       counts[key] = (counts[key] ?? 0) + 1;
     }
     return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 10);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows]);
 
   const topFilters = useMemo(() => {
