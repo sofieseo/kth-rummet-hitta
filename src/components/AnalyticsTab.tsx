@@ -85,7 +85,63 @@ const KIND_LABELS: Record<string, string> = {
   service: "Service och faciliteter",
 };
 
-export function AnalyticsTab() {
+const TREND_COLORS = [
+  "var(--primary)",
+  "var(--chart-2, #10b981)",
+  "var(--chart-3, #f59e0b)",
+  "var(--chart-4, #ef4444)",
+  "var(--chart-5, #8b5cf6)",
+];
+
+function valueLabelFor(categoryKey: string, value: string, filterOptions: FilterOption[]): string {
+  if (categoryKey === "spaceKind") return KIND_LABELS[value] ?? value;
+  if (categoryKey === "freeOnly") return "Endast lediga grupprum";
+  const opt = filterOptions.find((o) => o.category === categoryKey && o.label === value);
+  return opt?.label ?? value;
+}
+
+function categoryLabelFor(key: string, categories: FilterCategoryRow[]): string {
+  if (key === "spaceKind") return "Kategori";
+  if (key === "workMode") return "Läge";
+  if (key === "groupSize") return "Grupprumsstorlek";
+  if (key === "freeOnly") return "Endast lediga";
+  return categories.find((c) => c.key === key)?.title ?? key;
+}
+
+function buildFiltersFromPayload(p: Record<string, unknown>): Filters {
+  const cats = (p.categories ?? {}) as Record<string, string[]>;
+  return {
+    query: String(p.query ?? ""),
+    spaceKind: String(p.spaceKind ?? "study") as Space["space_kind"],
+    workMode: p.workMode ? String(p.workMode) : null,
+    groupSize:
+      p.groupSize === "2-4" || p.groupSize === "5+"
+        ? (p.groupSize as "2-4" | "5+")
+        : null,
+    freeOnly: Boolean(p.freeOnly),
+    byCategory: { ...cats },
+  };
+}
+
+function countMatchingSpaces(
+  test: Filters,
+  spaces: Space[],
+  categories: FilterCategoryRow[],
+  isGroupRoom: (s: Space) => boolean,
+): number {
+  return spaces.filter((s) => matchesSpace(s, test, categories, { isGroupRoom })).length;
+}
+
+export function AnalyticsTab({
+  spaces,
+  categories,
+  filterOptions,
+}: {
+  spaces: Space[];
+  categories: FilterCategoryRow[];
+  filterOptions: FilterOption[];
+}) {
+
   const [preset, setPreset] = useState<PresetKey>("7d");
   const [customFrom, setCustomFrom] = useState<Date | undefined>(() => {
     const d = new Date();
