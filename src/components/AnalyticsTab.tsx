@@ -6,17 +6,31 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon, Download, Info } from "lucide-react";
 import { sv } from "date-fns/locale";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 import {
   BarChart,
   Bar,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
+  CartesianGrid,
+  Legend,
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
 import { cn } from "@/lib/utils";
-import { exportAnalyticsToExcel } from "@/lib/analyticsExport";
+import {
+  exportAnalyticsToExcel,
+  type DemandSupplyItem,
+  type EmptyComboWithSuggestion,
+  type TrendRow,
+} from "@/lib/analyticsExport";
+import { matchesSpace } from "@/lib/filterMatch";
+import { groupRoomLabels, isGroupRoomSpace } from "@/lib/groupRoom";
+import { emptyFilters, type Filters } from "@/components/FilterPanel";
+import type { FilterCategoryRow, FilterOption, Space } from "@/lib/spaces";
+
 
 type Row = {
   id: number;
