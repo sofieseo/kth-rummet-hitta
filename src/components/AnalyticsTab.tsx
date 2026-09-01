@@ -694,7 +694,13 @@ export function AnalyticsTab({
             variant="outline"
             size="sm"
             disabled={rows.length === 0}
-            onClick={() => exportAnalyticsToExcel(rows, from, to)}
+            onClick={() =>
+              exportAnalyticsToExcel(rows, from, to, {
+                demandSupply,
+                emptyWithAlternatives: emptyResultsWithSuggestions,
+                trend: trendData,
+              })
+            }
           >
             <Download className="h-4 w-4 mr-2" /> Exportera Excel
           </Button>
