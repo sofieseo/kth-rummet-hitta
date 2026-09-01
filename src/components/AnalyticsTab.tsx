@@ -914,7 +914,108 @@ export function AnalyticsTab({
           </Section>
 
           <Section
+            title="Efterfrågan vs utbud per filter"
+            help="Visar hur många gånger ett filter valts jämfört med hur många lokaler som matchar det. Ett lågt utbud i förhållande till efterfrågan tyder på att studenterna letar efter något som inte finns."
+          >
+            {demandSupply.length === 0 ? <Empty /> : (
+              <div className="space-y-4">
+                {Object.entries(demandSupplyByCategory).map(([categoryLabel, items]) => (
+                  <div key={categoryLabel}>
+                    <h4 className="text-sm font-semibold mb-2">{categoryLabel}</h4>
+                    <ul className="divide-y divide-border">
+                      {items.map((item) => {
+                        const ratio = item.demand > 0 ? item.supply / item.demand : 0;
+                        return (
+                          <li key={`${item.categoryKey}-${item.valueKey}`} className="py-2 text-sm">
+                            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                              <span className="break-words min-w-0">{item.valueLabel}</span>
+                              <span className="font-mono tabular-nums text-muted-foreground">
+                                {item.demand.toLocaleString("sv-SE")} val · {item.supply} lokal{item.supply === 1 ? "" : "er"}
+                              </span>
+                            </div>
+                            <div className="mt-1.5 h-2 rounded bg-muted overflow-hidden flex">
+                              <div
+                                className="h-full bg-primary"
+                                style={{ width: `${Math.min(100, (item.demand / Math.max(item.demand, item.supply, 1)) * 100)}%` }}
+                                title="Efterfrågan"
+                              />
+                              <div
+                                className="h-full bg-emerald-500"
+                                style={{ width: `${Math.min(100, (item.supply / Math.max(item.demand, item.supply, 1)) * 100)}%` }}
+                                title="Utbudet"
+                              />
+                            </div>
+                            <div className="mt-0.5 text-xs text-muted-foreground">
+                              {ratio < 1
+                                ? `Efterfrågan överstiger utbudet (${(ratio * 100).toFixed(0)}% täckning)`
+                                : ratio === 0 && item.demand > 0
+                                  ? "Ingen lokal matchar detta filter"
+                                  : `Utbudet täcker efterfrågan (${(ratio * 100).toFixed(0)}% täckning)`}
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Section>
+
+          <Section
+            title="Sökningar utan träff – närmaste alternativ"
+            help="Vanliga filterkombinationer som gav noll träffar, med förslag på vilket enskilt filter du kan ta bort för att flest lokaler ska visas."
+          >
+            {emptyResultsWithSuggestions.length === 0 ? <Empty /> : (
+              <ol className="divide-y divide-border">
+                {emptyResultsWithSuggestions.map((e, i) => (
+                  <li key={i} className="py-3 text-sm">
+                    <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                      <span className="font-medium break-words min-w-0">{e.filters || "(inga filter)"}</span>
+                      <span className="font-mono tabular-nums text-muted-foreground">{e.count} sökningar</span>
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground break-words">{e.suggestion}</div>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </Section>
+
+          <Section
+            title="Trender – toppfilter och sökningar utan träff"
+            help="Visar hur de fem mest valda filtren och antalet sökningar utan träff har förändrats dag för dag under vald period."
+          >
+            {trendData.points.length === 0 || trendData.series.length === 0 ? <Empty /> : (
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={trendData.points} margin={{ top: 8, right: 8, bottom: 0, left: -12 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="date" tick={{ fontSize: 10 }} tickFormatter={(v) => format(parseISO(v), "d MMM", { locale: sv })} />
+                    <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
+                    <Tooltip labelFormatter={(v) => format(parseISO(String(v)), "d MMMM yyyy", { locale: sv })} />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <Line type="monotone" dataKey="total" name="Filterändringar" stroke="var(--primary)" strokeWidth={2} dot={false} />
+                    <Line type="monotone" dataKey="empty" name="Sök utan träff" stroke="var(--destructive, #ef4444)" strokeWidth={2} dot={false} />
+                    {trendData.series.map((s, i) => (
+                      <Line
+                        key={s.key}
+                        type="monotone"
+                        dataKey={s.key}
+                        name={s.label}
+                        stroke={TREND_COLORS[(i + 1) % TREND_COLORS.length]}
+                        strokeWidth={2}
+                        dot={false}
+                      />
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </Section>
+
+          <Section
             title="Sökningar utan träff (senaste 30)"
+
             help="Varje gång en besökares sökord och filter gav noll träffar. Visar tidpunkt, sökord, vald kategori och vilka filter som var aktiva."
           >
             {emptySearches.length === 0 ? <Empty /> : (
