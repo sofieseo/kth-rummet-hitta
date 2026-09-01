@@ -933,17 +933,25 @@ export function AnalyticsTab({
                                 {item.demand.toLocaleString("sv-SE")} val · {item.supply} lokal{item.supply === 1 ? "" : "er"}
                               </span>
                             </div>
-                            <div className="mt-1.5 h-2 rounded bg-muted overflow-hidden flex">
-                              <div
-                                className="h-full bg-primary"
-                                style={{ width: `${Math.min(100, (item.demand / Math.max(item.demand, item.supply, 1)) * 100)}%` }}
-                                title="Efterfrågan"
-                              />
-                              <div
-                                className="h-full bg-emerald-500"
-                                style={{ width: `${Math.min(100, (item.supply / Math.max(item.demand, item.supply, 1)) * 100)}%` }}
-                                title="Utbudet"
-                              />
+                            <div className="mt-1.5 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                              <div>
+                                <span className="text-muted-foreground">Efterfrågan</span>
+                                <div className="h-2 rounded bg-muted overflow-hidden mt-0.5">
+                                  <div
+                                    className="h-full bg-primary"
+                                    style={{ width: `${Math.min(100, (item.demand / Math.max(item.demand, item.supply, 1)) * 100)}%` }}
+                                  />
+                                </div>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">Utbud</span>
+                                <div className="h-2 rounded bg-muted overflow-hidden mt-0.5">
+                                  <div
+                                    className="h-full bg-emerald-500"
+                                    style={{ width: `${Math.min(100, (item.supply / Math.max(item.demand, item.supply, 1)) * 100)}%` }}
+                                  />
+                                </div>
+                              </div>
                             </div>
                             <div className="mt-0.5 text-xs text-muted-foreground">
                               {ratio < 1
