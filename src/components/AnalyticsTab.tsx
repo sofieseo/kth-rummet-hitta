@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, Download } from "lucide-react";
+import { CalendarIcon, Download, Info } from "lucide-react";
 import { sv } from "date-fns/locale";
 import { format } from "date-fns";
 import {
@@ -14,8 +14,6 @@ import {
   YAxis,
   Tooltip,
   ResponsiveContainer,
-  CartesianGrid,
-  Legend,
 } from "recharts";
 import { cn } from "@/lib/utils";
 import { exportAnalyticsToExcel } from "@/lib/analyticsExport";
@@ -132,27 +130,6 @@ export function AnalyticsTab() {
   const totals = useMemo(() => computeTotals(rows), [rows]);
   const prevTotals = useMemo(() => computeTotals(prevRows), [prevRows]);
 
-
-  const timeSeries = useMemo(() => {
-    const spanHours = (to.getTime() - from.getTime()) / 3600 / 1000;
-    const byHour = spanHours <= 48;
-    const buckets = new Map<string, { label: string; views: number; expands: number; bookings: number }>();
-    for (const r of rows) {
-      const d = new Date(r.created_at);
-      const key = byHour
-        ? `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}-${d.getHours()}`
-        : `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-      const label = byHour
-        ? `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:00`
-        : `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
-      const b = buckets.get(key) ?? { label, views: 0, expands: 0, bookings: 0 };
-      if (r.event_type === "page_view") b.views++;
-      else if (r.event_type === "card_expand") b.expands++;
-      else if (r.event_type === "booking_link_click") b.bookings++;
-      buckets.set(key, b);
-    }
-    return Array.from(buckets.values()).reverse();
-  }, [rows, from, to]);
 
   const topCards = useMemo(() => {
     const counts: Record<
@@ -286,7 +263,7 @@ export function AnalyticsTab() {
   }, [rows]);
 
   const emptySearches = useMemo(() => {
-    const out: { when: string; query?: string; workMode?: string; cats: string }[] = [];
+    const out: { when: string; query?: string; kind?: string; workMode?: string; cats: string }[] = [];
     for (const r of rows) {
       if (r.event_type !== "empty_results") continue;
       const p = (r.payload ?? {}) as Record<string, unknown>;
@@ -296,6 +273,7 @@ export function AnalyticsTab() {
       out.push({
         when: new Date(r.created_at).toLocaleString("sv-SE"),
         query: p.query ? String(p.query) : undefined,
+        kind: p.spaceKind ? (KIND_LABELS[String(p.spaceKind)] ?? String(p.spaceKind)) : undefined,
         workMode: p.workMode ? String(p.workMode) : undefined,
         cats,
       });
@@ -872,7 +850,22 @@ function DatePicker({
   );
 }
 
-function Stat({ label, value, prev }: { label: string; value: number | string; prev?: number }) {
+function HelpTip({ text }: { text: string }) {
+  return (
+    <button
+      type="button"
+      tabIndex={0}
+      title={text}
+      aria-label={text}
+      className="inline-flex shrink-0 text-muted-foreground/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-full align-middle"
+      onClick={(e) => e.preventDefault()}
+    >
+      <Info className="h-3.5 w-3.5" aria-hidden="true" />
+    </button>
+  );
+}
+
+function Stat({ label, value, prev, help }: { label: string; value: number | string; prev?: number; help?: string }) {
   let delta: { pct: number; dir: "up" | "down" | "flat" } | null = null;
   if (typeof value === "number" && typeof prev === "number") {
     if (prev === 0 && value === 0) delta = { pct: 0, dir: "flat" };
@@ -887,7 +880,10 @@ function Stat({ label, value, prev }: { label: string; value: number | string; p
   const arrow = delta?.dir === "up" ? "▲" : delta?.dir === "down" ? "▼" : "→";
   return (
     <div className="rounded-xl border border-border bg-card p-4">
-      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="text-xs text-muted-foreground flex items-center gap-1">
+        <span>{label}</span>
+        {help && <HelpTip text={help} />}
+      </div>
       <div className="mt-1 text-2xl font-bold tabular-nums">
         {typeof value === "number" ? value.toLocaleString("sv-SE") : value}
       </div>
@@ -901,10 +897,13 @@ function Stat({ label, value, prev }: { label: string; value: number | string; p
 }
 
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, children, help }: { title: string; children: React.ReactNode; help?: string }) {
   return (
     <div className="rounded-xl border border-border bg-card p-4">
-      <h3 className="text-sm font-semibold mb-2">{title}</h3>
+      <h3 className="text-sm font-semibold mb-2 flex items-center gap-1.5">
+        <span>{title}</span>
+        {help && <HelpTip text={help} />}
+      </h3>
       {children}
     </div>
   );
