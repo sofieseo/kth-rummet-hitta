@@ -9,6 +9,33 @@ type Row = {
   created_at: string;
 };
 
+type DemandSupplyItem = {
+  categoryKey: string;
+  categoryLabel: string;
+  valueKey: string;
+  valueLabel: string;
+  demand: number;
+  supply: number;
+};
+
+type EmptyWithSuggestion = {
+  filters: string;
+  count: number;
+  suggestion: string;
+};
+
+type TrendPoint = {
+  date: string;
+  total: number;
+  empty: number;
+  [seriesKey: string]: number | string;
+};
+
+type TrendData = {
+  points: TrendPoint[];
+  series: { key: string; label: string }[];
+};
+
 function fmtDate(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -16,7 +43,17 @@ function fmtDate(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-export function exportAnalyticsToExcel(rows: Row[], from: Date, to: Date): void {
+export function exportAnalyticsToExcel(
+  rows: Row[],
+  from: Date,
+  to: Date,
+  extra?: {
+    demandSupply: DemandSupplyItem[];
+    emptyWithAlternatives: EmptyWithSuggestion[];
+    trend: TrendData;
+  },
+): void {
+
   const wb = XLSX.utils.book_new();
 
   // Summary
