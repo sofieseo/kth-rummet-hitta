@@ -37,7 +37,30 @@ type Row = {
   created_at: string;
 };
 
+type DemandSupplyItem = {
+  categoryKey: string;
+  categoryLabel: string;
+  valueKey: string;
+  valueLabel: string;
+  demand: number;
+  supply: number;
+};
+
+type EmptyComboWithSuggestion = {
+  filters: string;
+  count: number;
+  suggestion: string;
+};
+
+type TrendRow = {
+  date: string;
+  total: number;
+  empty: number;
+  [seriesKey: string]: number | string;
+};
+
 const PRESETS = [
+
   { key: "24h", label: "24 timmar", hours: 24 },
   { key: "7d", label: "7 dagar", hours: 24 * 7 },
   { key: "30d", label: "30 dagar", hours: 24 * 30 },
