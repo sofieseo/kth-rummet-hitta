@@ -20,16 +20,12 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { cn } from "@/lib/utils";
-import {
-  exportAnalyticsToExcel,
-  type DemandSupplyItem,
-  type EmptyComboWithSuggestion,
-  type TrendRow,
-} from "@/lib/analyticsExport";
+import { exportAnalyticsToExcel } from "@/lib/analyticsExport";
 import { matchesSpace } from "@/lib/filterMatch";
 import { groupRoomLabels, isGroupRoomSpace } from "@/lib/groupRoom";
 import { emptyFilters, type Filters } from "@/components/FilterPanel";
 import type { FilterCategoryRow, FilterOption, Space } from "@/lib/spaces";
+
 
 
 type Row = {
