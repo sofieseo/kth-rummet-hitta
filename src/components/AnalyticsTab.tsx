@@ -155,15 +155,86 @@ export function AnalyticsTab() {
   }, [rows, from, to]);
 
   const topCards = useMemo(() => {
-    const counts: Record<string, { name: string; count: number }> = {};
+    const counts: Record<
+      string,
+      { name: string; count: number; expand: number; booking: number; map: number }
+    > = {};
     for (const r of rows) {
       if (!["card_expand", "booking_link_click", "map_link_click"].includes(r.event_type)) continue;
       const id = String((r.payload as { space_id?: string } | null)?.space_id ?? "");
       if (!id) continue;
       const name = String((r.payload as { name?: string } | null)?.name ?? id);
-      counts[id] = { name, count: (counts[id]?.count ?? 0) + 1 };
+      const e = counts[id] ?? { name, count: 0, expand: 0, booking: 0, map: 0 };
+      e.name = name;
+      e.count++;
+      if (r.event_type === "card_expand") e.expand++;
+      else if (r.event_type === "booking_link_click") e.booking++;
+      else if (r.event_type === "map_link_click") e.map++;
+      counts[id] = e;
     }
     return Object.entries(counts).map(([id, v]) => ({ id, ...v })).sort((a, b) => b.count - a.count).slice(0, 10);
+  }, [rows]);
+
+  const KIND_LABELS: Record<string, string> = {
+    study: "Studieplats",
+    creative: "Skapande och paus",
+    service: "Service och faciliteter",
+  };
+
+  const kindBreakdown = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const r of rows) {
+      if (r.event_type !== "filter_change") continue;
+      const k = String((r.payload as { spaceKind?: string } | null)?.spaceKind ?? "");
+      if (!k) continue;
+      counts[k] = (counts[k] ?? 0) + 1;
+    }
+    const total = Object.values(counts).reduce((a, b) => a + b, 0);
+    return Object.entries(counts)
+      .map(([k, v]) => ({ key: k, label: KIND_LABELS[k] ?? k, count: v, pct: total ? v / total : 0 }))
+      .sort((a, b) => b.count - a.count);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows]);
+
+  const bookingKinds = useMemo(() => {
+    const labels: Record<string, string> = {
+      book_now: "”Boka nu” (ledigt grupprum)",
+      group_booking: "”Boka grupprum”",
+      booking: "”Se schema”",
+      okänd: "Okänd knapp",
+    };
+    const counts: Record<string, number> = {};
+    for (const r of rows) {
+      if (r.event_type !== "booking_link_click") continue;
+      const k = String((r.payload as { kind?: string } | null)?.kind ?? "okänd");
+      counts[k] = (counts[k] ?? 0) + 1;
+    }
+    return Object.entries(counts)
+      .map(([k, v]) => ({ label: labels[k] ?? k, count: v }))
+      .sort((a, b) => b.count - a.count);
+  }, [rows]);
+
+  const topFilterCombos = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const r of rows) {
+      if (r.event_type !== "filter_change") continue;
+      const p = (r.payload ?? {}) as Record<string, unknown>;
+      const parts: string[] = [];
+      if (p.spaceKind) parts.push(`kategori: ${KIND_LABELS[String(p.spaceKind)] ?? String(p.spaceKind)}`);
+      if (p.query) parts.push("sökord");
+      if (p.workMode) parts.push(`läge: ${String(p.workMode)}`);
+      if (p.groupSize) parts.push(`storlek: ${String(p.groupSize)}`);
+      if (p.freeOnly) parts.push("endast lediga grupprum");
+      const cats = (p.categories ?? {}) as Record<string, string[]>;
+      for (const [k, v] of Object.entries(cats)) {
+        for (const val of (v ?? []).slice().sort()) parts.push(`${k}: ${val}`);
+      }
+      if (!parts.length) continue;
+      const key = parts.sort().join(" · ");
+      counts[key] = (counts[key] ?? 0) + 1;
+    }
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows]);
 
   const topFilters = useMemo(() => {
