@@ -462,6 +462,200 @@ export function AnalyticsTab({
     };
   }, [rows]);
 
+  const isGroupRoom = useMemo(() => {
+    const labels = groupRoomLabels(filterOptions);
+    return (s: Space) => isGroupRoomSpace(s, labels);
+  }, [filterOptions]);
+
+  const demandSupply = useMemo<DemandSupplyItem[]>(() => {
+    const demand = new Map<string, number>();
+    const add = (categoryKey: string, value: string) => {
+      if (!value) return;
+      const key = `${categoryKey}\x00${value}`;
+      demand.set(key, (demand.get(key) ?? 0) + 1);
+    };
+    for (const r of rows) {
+      if (r.event_type !== "filter_change") continue;
+      const p = (r.payload ?? {}) as Record<string, unknown>;
+      if (p.spaceKind) add("spaceKind", String(p.spaceKind));
+      if (p.workMode) add("workMode", String(p.workMode));
+      if (p.groupSize) add("groupSize", String(p.groupSize));
+      if (p.freeOnly) add("freeOnly", "lediga");
+      const cats = (p.categories ?? {}) as Record<string, string[]>;
+      for (const [cat, vals] of Object.entries(cats)) {
+        for (const v of vals ?? []) add(cat, v);
+      }
+    }
+
+    const items: DemandSupplyItem[] = [];
+    for (const [key, demandCount] of demand.entries()) {
+      const [categoryKey, valueKey] = key.split("\x00");
+      let supply = 0;
+      if (categoryKey === "spaceKind") {
+        supply = spaces.filter((s) => s.space_kind === valueKey).length;
+      } else if (categoryKey === "workMode") {
+        supply = countMatchingSpaces(
+          { ...emptyFilters, workMode: valueKey as Filters["workMode"] },
+          spaces,
+          categories,
+          isGroupRoom,
+        );
+      } else if (categoryKey === "groupSize") {
+        supply = countMatchingSpaces(
+          { ...emptyFilters, workMode: "grupprum", groupSize: valueKey as Filters["groupSize"] },
+          spaces,
+          categories,
+          isGroupRoom,
+        );
+      } else if (categoryKey !== "freeOnly") {
+        supply = countMatchingSpaces(
+          { ...emptyFilters, byCategory: { [categoryKey]: [valueKey] } },
+          spaces,
+          categories,
+          isGroupRoom,
+        );
+      }
+      items.push({
+        categoryKey,
+        categoryLabel: categoryLabelFor(categoryKey, categories),
+        valueKey,
+        valueLabel: valueLabelFor(categoryKey, valueKey, filterOptions),
+        demand: demandCount,
+        supply,
+      });
+    }
+    return items.sort((a, b) => b.demand - a.demand);
+  }, [rows, spaces, categories, filterOptions, isGroupRoom]);
+
+  const demandSupplyByCategory = useMemo(() => {
+    const map: Record<string, DemandSupplyItem[]> = {};
+    for (const item of demandSupply) {
+      (map[item.categoryKey] ??= []).push(item);
+    }
+    for (const list of Object.values(map)) {
+      list.sort((a, b) => b.demand - a.demand);
+    }
+    return map;
+  }, [demandSupply]);
+
+  const emptyResultsWithSuggestions = useMemo<EmptyComboWithSuggestion[]>(() => {
+    const combos = new Map<
+      string,
+      { filters: Filters; displayParts: string[]; count: number }
+    >();
+    for (const r of rows) {
+      if (r.event_type !== "empty_results") continue;
+      const p = (r.payload ?? {}) as Record<string, unknown>;
+      const filters = buildFiltersFromPayload(p);
+      const parts: string[] = [];
+      if (filters.query) parts.push(`sökord: ${filters.query}`);
+      if (p.spaceKind) parts.push(`kategori: ${KIND_LABELS[String(p.spaceKind)] ?? String(p.spaceKind)}`);
+      if (filters.workMode) parts.push(`läge: ${filters.workMode}`);
+      if (filters.groupSize) parts.push(`storlek: ${filters.groupSize}`);
+      if (filters.freeOnly) parts.push("endast lediga grupprum");
+      for (const [cat, vals] of Object.entries(filters.byCategory)) {
+        const catLabel = categoryLabelFor(cat, categories);
+        for (const v of vals) parts.push(`${catLabel}: ${valueLabelFor(cat, v, filterOptions)}`);
+      }
+      const key = parts.sort().join(" · ");
+      const existing = combos.get(key);
+      if (existing) {
+        existing.count++;
+      } else {
+        combos.set(key, { filters, displayParts: parts, count: 1 });
+      }
+    }
+
+    const out: EmptyComboWithSuggestion[] = [];
+    for (const { filters, displayParts, count } of combos.values()) {
+      const candidates: { label: string; test: Filters }[] = [];
+      if (filters.query) candidates.push({ label: "sökord", test: { ...filters, query: "" } });
+      if (filters.workMode) candidates.push({ label: "läge", test: { ...filters, workMode: null } });
+      if (filters.groupSize) candidates.push({ label: "grupprumsstorlek", test: { ...filters, groupSize: null } });
+      if (filters.freeOnly) candidates.push({ label: "endast lediga", test: { ...filters, freeOnly: false } });
+      for (const [cat, vals] of Object.entries(filters.byCategory)) {
+        const catLabel = categoryLabelFor(cat, categories);
+        for (const v of vals) {
+          const nextVals = vals.filter((x) => x !== v);
+          const nextByCat = { ...filters.byCategory, [cat]: nextVals };
+          let nextFilters: Filters;
+          if (nextVals.length === 0) {
+            const { [cat]: _, ...rest } = nextByCat;
+            nextFilters = { ...filters, byCategory: rest };
+          } else {
+            nextFilters = { ...filters, byCategory: nextByCat };
+          }
+          candidates.push({
+            label: `${catLabel}: ${valueLabelFor(cat, v, filterOptions)}`,
+            test: nextFilters,
+          });
+        }
+      }
+
+      let best: { label: string; count: number } | null = null;
+      for (const c of candidates) {
+        const n = countMatchingSpaces(c.test, spaces, categories, isGroupRoom);
+        if (n > 0 && (!best || n > best.count)) best = { label: c.label, count: n };
+      }
+      const suggestion = best
+        ? `Om du tar bort ${best.label} visas ${best.count} ${best.count === 1 ? "lokal" : "lokaler"}`
+        : "Inget enstaka filter kan tas bort för att ge träffar";
+      out.push({ filters: displayParts.join(" · "), count, suggestion });
+    }
+    return out.sort((a, b) => b.count - a.count).slice(0, 10);
+  }, [rows, spaces, categories, filterOptions, isGroupRoom]);
+
+  const trendData = useMemo(() => {
+    const topValues = demandSupply.slice(0, 5);
+    const seriesKeys = topValues.map((v) => `${v.categoryKey}:${v.valueKey}`);
+    const seriesLabels = topValues.map((v) => `${v.categoryLabel}: ${v.valueLabel}`);
+    const buckets = new Map<string, { total: number; empty: number; values: Record<string, number> }>();
+    const ensure = (day: string) => {
+      if (!buckets.has(day)) buckets.set(day, { total: 0, empty: 0, values: {} });
+      return buckets.get(day)!;
+    };
+    for (const r of rows) {
+      const day = r.created_at.slice(0, 10);
+      if (r.event_type === "empty_results") {
+        ensure(day).empty++;
+        continue;
+      }
+      if (r.event_type !== "filter_change") continue;
+      const bucket = ensure(day);
+      bucket.total++;
+      const p = (r.payload ?? {}) as Record<string, unknown>;
+      for (let i = 0; i < topValues.length; i++) {
+        const item = topValues[i];
+        let hit = false;
+        if (item.categoryKey === "spaceKind" && String(p.spaceKind ?? "") === item.valueKey) hit = true;
+        else if (item.categoryKey === "workMode" && String(p.workMode ?? "") === item.valueKey) hit = true;
+        else if (item.categoryKey === "groupSize" && String(p.groupSize ?? "") === item.valueKey) hit = true;
+        else if (item.categoryKey === "freeOnly" && p.freeOnly) hit = true;
+        else {
+          const cats = (p.categories ?? {}) as Record<string, string[]>;
+          if ((cats[item.categoryKey] ?? []).includes(item.valueKey)) hit = true;
+        }
+        if (hit) bucket.values[seriesKeys[i]] = (bucket.values[seriesKeys[i]] ?? 0) + 1;
+      }
+    }
+
+    const points: TrendRow[] = [];
+    const start = new Date(from);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(to);
+    end.setHours(0, 0, 0, 0);
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const iso = d.toISOString().slice(0, 10);
+      const bucket = buckets.get(iso) ?? { total: 0, empty: 0, values: {} };
+      const point: TrendRow = { date: iso, total: bucket.total, empty: bucket.empty };
+      for (let i = 0; i < seriesKeys.length; i++) {
+        point[seriesKeys[i]] = bucket.values[seriesKeys[i]] ?? 0;
+      }
+      points.push(point);
+    }
+    return { points, series: seriesKeys.map((k, i) => ({ key: k, label: seriesLabels[i] })) };
+  }, [rows, demandSupply, from, to]);
+
   const heatmap = useMemo(() => {
     // 7 rows (Mon-Sun) x 24 cols
     const grid: number[][] = Array.from({ length: 7 }, () => new Array(24).fill(0));
@@ -475,6 +669,7 @@ export function AnalyticsTab({
     for (const row of grid) for (const v of row) if (v > max) max = v;
     return { grid, max };
   }, [rows]);
+
 
 
   return (
