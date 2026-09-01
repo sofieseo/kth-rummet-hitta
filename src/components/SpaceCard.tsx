@@ -754,7 +754,7 @@ export function SpaceCard({
             rel="noopener noreferrer"
             onClick={(event) => {
               event.stopPropagation();
-              analytics.trackBooking("group_booking");
+              analytics.trackBooking("book_now");
             }}
             className={buttonClass}
           >
