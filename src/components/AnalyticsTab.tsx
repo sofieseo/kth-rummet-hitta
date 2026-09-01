@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, Download } from "lucide-react";
+import { CalendarIcon, Download, Info } from "lucide-react";
 import { sv } from "date-fns/locale";
 import { format } from "date-fns";
 import {
@@ -14,8 +14,6 @@ import {
   YAxis,
   Tooltip,
   ResponsiveContainer,
-  CartesianGrid,
-  Legend,
 } from "recharts";
 import { cn } from "@/lib/utils";
 import { exportAnalyticsToExcel } from "@/lib/analyticsExport";
@@ -47,6 +45,12 @@ function endOfDay(d: Date): Date {
   x.setHours(23, 59, 59, 999);
   return x;
 }
+
+const KIND_LABELS: Record<string, string> = {
+  study: "Studieplats",
+  creative: "Skapande och paus",
+  service: "Service och faciliteter",
+};
 
 export function AnalyticsTab() {
   const [preset, setPreset] = useState<PresetKey>("7d");
@@ -133,37 +137,79 @@ export function AnalyticsTab() {
   const prevTotals = useMemo(() => computeTotals(prevRows), [prevRows]);
 
 
-  const timeSeries = useMemo(() => {
-    const spanHours = (to.getTime() - from.getTime()) / 3600 / 1000;
-    const byHour = spanHours <= 48;
-    const buckets = new Map<string, { label: string; views: number; expands: number; bookings: number }>();
-    for (const r of rows) {
-      const d = new Date(r.created_at);
-      const key = byHour
-        ? `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}-${d.getHours()}`
-        : `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-      const label = byHour
-        ? `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:00`
-        : `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
-      const b = buckets.get(key) ?? { label, views: 0, expands: 0, bookings: 0 };
-      if (r.event_type === "page_view") b.views++;
-      else if (r.event_type === "card_expand") b.expands++;
-      else if (r.event_type === "booking_link_click") b.bookings++;
-      buckets.set(key, b);
-    }
-    return Array.from(buckets.values()).reverse();
-  }, [rows, from, to]);
-
   const topCards = useMemo(() => {
-    const counts: Record<string, { name: string; count: number }> = {};
+    const counts: Record<
+      string,
+      { name: string; count: number; expand: number; booking: number; map: number }
+    > = {};
     for (const r of rows) {
       if (!["card_expand", "booking_link_click", "map_link_click"].includes(r.event_type)) continue;
       const id = String((r.payload as { space_id?: string } | null)?.space_id ?? "");
       if (!id) continue;
       const name = String((r.payload as { name?: string } | null)?.name ?? id);
-      counts[id] = { name, count: (counts[id]?.count ?? 0) + 1 };
+      const e = counts[id] ?? { name, count: 0, expand: 0, booking: 0, map: 0 };
+      e.name = name;
+      e.count++;
+      if (r.event_type === "card_expand") e.expand++;
+      else if (r.event_type === "booking_link_click") e.booking++;
+      else if (r.event_type === "map_link_click") e.map++;
+      counts[id] = e;
     }
     return Object.entries(counts).map(([id, v]) => ({ id, ...v })).sort((a, b) => b.count - a.count).slice(0, 10);
+  }, [rows]);
+
+  const kindBreakdown = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const r of rows) {
+      if (r.event_type !== "filter_change") continue;
+      const k = String((r.payload as { spaceKind?: string } | null)?.spaceKind ?? "");
+      if (!k) continue;
+      counts[k] = (counts[k] ?? 0) + 1;
+    }
+    const total = Object.values(counts).reduce((a, b) => a + b, 0);
+    return Object.entries(counts)
+      .map(([k, v]) => ({ key: k, label: KIND_LABELS[k] ?? k, count: v, pct: total ? v / total : 0 }))
+      .sort((a, b) => b.count - a.count);
+  }, [rows]);
+
+  const bookingKinds = useMemo(() => {
+    const labels: Record<string, string> = {
+      book_now: "”Boka nu” (ledigt grupprum)",
+      group_booking: "”Boka grupprum”",
+      booking: "”Se schema”",
+      okänd: "Okänd knapp",
+    };
+    const counts: Record<string, number> = {};
+    for (const r of rows) {
+      if (r.event_type !== "booking_link_click") continue;
+      const k = String((r.payload as { kind?: string } | null)?.kind ?? "okänd");
+      counts[k] = (counts[k] ?? 0) + 1;
+    }
+    return Object.entries(counts)
+      .map(([k, v]) => ({ label: labels[k] ?? k, count: v }))
+      .sort((a, b) => b.count - a.count);
+  }, [rows]);
+
+  const topFilterCombos = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const r of rows) {
+      if (r.event_type !== "filter_change") continue;
+      const p = (r.payload ?? {}) as Record<string, unknown>;
+      const parts: string[] = [];
+      if (p.spaceKind) parts.push(`kategori: ${KIND_LABELS[String(p.spaceKind)] ?? String(p.spaceKind)}`);
+      if (p.query) parts.push("sökord");
+      if (p.workMode) parts.push(`läge: ${String(p.workMode)}`);
+      if (p.groupSize) parts.push(`storlek: ${String(p.groupSize)}`);
+      if (p.freeOnly) parts.push("endast lediga grupprum");
+      const cats = (p.categories ?? {}) as Record<string, string[]>;
+      for (const [k, v] of Object.entries(cats)) {
+        for (const val of (v ?? []).slice().sort()) parts.push(`${k}: ${val}`);
+      }
+      if (!parts.length) continue;
+      const key = parts.sort().join(" · ");
+      counts[key] = (counts[key] ?? 0) + 1;
+    }
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 10);
   }, [rows]);
 
   const topFilters = useMemo(() => {
@@ -215,7 +261,7 @@ export function AnalyticsTab() {
   }, [rows]);
 
   const emptySearches = useMemo(() => {
-    const out: { when: string; query?: string; workMode?: string; cats: string }[] = [];
+    const out: { when: string; query?: string; kind?: string; workMode?: string; cats: string }[] = [];
     for (const r of rows) {
       if (r.event_type !== "empty_results") continue;
       const p = (r.payload ?? {}) as Record<string, unknown>;
@@ -225,6 +271,7 @@ export function AnalyticsTab() {
       out.push({
         when: new Date(r.created_at).toLocaleString("sv-SE"),
         query: p.query ? String(p.query) : undefined,
+        kind: p.spaceKind ? (KIND_LABELS[String(p.spaceKind)] ?? String(p.spaceKind)) : undefined,
         workMode: p.workMode ? String(p.workMode) : undefined,
         cats,
       });
@@ -385,6 +432,11 @@ export function AnalyticsTab() {
       <p className="text-sm text-muted-foreground">
         Vald period: {format(from, "d MMM yyyy HH:mm", { locale: sv })} – {format(to, "d MMM yyyy HH:mm", { locale: sv })}
       </p>
+      <p className="text-xs text-muted-foreground -mt-4">
+        Statistiken uppdateras automatiskt var 30:e sekund. Håll muspekaren över (eller tryck på)
+        <Info className="inline h-3.5 w-3.5 mx-1 align-[-2px]" aria-hidden="true" />
+        för en förklaring av respektive fält.
+      </p>
 
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Hämtar statistik…</p>
@@ -393,14 +445,54 @@ export function AnalyticsTab() {
       ) : (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <Stat label="Sidvisningar" value={totals.byType.page_view ?? 0} prev={prevTotals.byType.page_view ?? 0} />
-            <Stat label="Unika sessioner" value={totals.sessions} prev={prevTotals.sessions} />
-            <Stat label="Kortklick (expand)" value={totals.byType.card_expand ?? 0} prev={prevTotals.byType.card_expand ?? 0} />
-            <Stat label="Bokningsklick" value={totals.byType.booking_link_click ?? 0} prev={prevTotals.byType.booking_link_click ?? 0} />
-            <Stat label="Kartklick" value={totals.byType.map_link_click ?? 0} prev={prevTotals.byType.map_link_click ?? 0} />
-            <Stat label="Länkklick lokalsida" value={totals.byType.space_link_click ?? 0} prev={prevTotals.byType.space_link_click ?? 0} />
-            <Stat label="Filterändringar" value={totals.byType.filter_change ?? 0} prev={prevTotals.byType.filter_change ?? 0} />
-            <Stat label="Sök utan träff" value={totals.byType.empty_results ?? 0} prev={prevTotals.byType.empty_results ?? 0} />
+            <Stat
+              label="Sidvisningar"
+              value={totals.byType.page_view ?? 0}
+              prev={prevTotals.byType.page_view ?? 0}
+              help="Antal gånger startsidan laddats. Samma besökare kan stå för flera sidvisningar."
+            />
+            <Stat
+              label="Unika sessioner"
+              value={totals.sessions}
+              prev={prevTotals.sessions}
+              help="Antal unika besök. En session är en besökare i en webbläsarflik tills fliken stängs."
+            />
+            <Stat
+              label="Utfällda infotexter (i-ikon)"
+              value={totals.byType.card_expand ?? 0}
+              prev={prevTotals.byType.card_expand ?? 0}
+              help="Antal gånger någon klickat på i-ikonen på ett lokalkort för att fälla ut informationstexten om lokalen."
+            />
+            <Stat
+              label="Bokningsklick"
+              value={totals.byType.booking_link_click ?? 0}
+              prev={prevTotals.byType.booking_link_click ?? 0}
+              help="Klick på bokningsknapparna (”Boka nu”, ”Boka grupprum” och ”Se schema”). Uppdelning per knapp visas längre ner."
+            />
+            <Stat
+              label="Kartklick"
+              value={totals.byType.map_link_click ?? 0}
+              prev={prevTotals.byType.map_link_click ?? 0}
+              help="Klick på ”Visa på karta” på ett lokalkort."
+            />
+            <Stat
+              label="Länkklick lokalsida"
+              value={totals.byType.space_link_click ?? 0}
+              prev={prevTotals.byType.space_link_click ?? 0}
+              help="Klick på länkar i lokaltexten som leder vidare till en annan lokal."
+            />
+            <Stat
+              label="Filterändringar"
+              value={totals.byType.filter_change ?? 0}
+              prev={prevTotals.byType.filter_change ?? 0}
+              help="Antal gånger besökare ändrat filter eller sökord. Snabba ändringar i följd räknas som en."
+            />
+            <Stat
+              label="Sök utan träff"
+              value={totals.byType.empty_results ?? 0}
+              prev={prevTotals.byType.empty_results ?? 0}
+              help="Antal gånger en sökning eller filtrering gav noll träffar."
+            />
           </div>
 
           <p className="text-xs text-muted-foreground -mt-2">
@@ -408,122 +500,74 @@ export function AnalyticsTab() {
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <Stat label="Sessioner som expanderade kort" value={`${(totals.expandRate * 100).toFixed(1)}%`} />
-            <Stat label="Sessioner med bokningsklick" value={`${(totals.bookRate * 100).toFixed(1)}%`} />
+            <Stat
+              label="Sessioner som fällde ut infotext"
+              value={`${(totals.expandRate * 100).toFixed(1)}%`}
+              help="Andel unika besök där någon klickade på i-ikonen på minst ett lokalkort."
+            />
+            <Stat
+              label="Sessioner med bokningsklick"
+              value={`${(totals.bookRate * 100).toFixed(1)}%`}
+              help="Andel unika besök där någon klickade på en bokningsknapp."
+            />
           </div>
 
-
-          <Section title="Aktivitet över tid">
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={timeSeries}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                  <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                  <Tooltip />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Bar dataKey="views" name="Sidvisningar" fill="var(--primary)" />
-                  <Bar dataKey="expands" name="Kortklick" fill="var(--muted-foreground)" />
-                  <Bar dataKey="bookings" name="Bokningsklick" fill="var(--destructive)" />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </Section>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <Section title="Trafik per timme på dygnet">
-              <div className="h-48">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={trafficByHour}>
-                    <XAxis dataKey="label" tick={{ fontSize: 10 }} />
-                    <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
-                    <Tooltip />
-                    <Bar dataKey="value" fill="var(--primary)" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
+            <Section
+              title="Valda kategorier"
+              help="Hur ofta besökare valt kategorierna Studieplats, Skapande och paus respektive Service och faciliteter i filtreringen."
+            >
+              {kindBreakdown.length === 0 ? <Empty /> : (
+                <ul className="space-y-2">
+                  {kindBreakdown.map((k) => (
+                    <li key={k.key} className="text-sm">
+                      <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+                        <span className="break-words min-w-0">{k.label}</span>
+                        <span className="font-mono tabular-nums text-muted-foreground">
+                          {k.count.toLocaleString("sv-SE")} · {(k.pct * 100).toFixed(0)}%
+                        </span>
+                      </div>
+                      <div className="mt-1 h-2 rounded bg-muted overflow-hidden">
+                        <div className="h-full bg-primary" style={{ width: `${k.pct * 100}%` }} />
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </Section>
-            <Section title="Trafik per veckodag">
-              <div className="h-48">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={trafficByWeekday}>
-                    <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
-                    <Tooltip />
-                    <Bar dataKey="value" fill="var(--primary)" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
+            <Section
+              title="Bokningsklick per knapp"
+              help="Visar vilken knapp besökaren klickade på: ”Boka nu” (visas när ett grupprum är ledigt just nu), ”Boka grupprum” eller ”Se schema”."
+            >
+              {bookingKinds.length === 0 ? <Empty /> : (
+                <ul className="divide-y divide-border">
+                  {bookingKinds.map((b) => (
+                    <li key={b.label} className="flex flex-wrap items-baseline justify-between py-2 text-sm gap-x-3">
+                      <span className="break-words min-w-0">{b.label}</span>
+                      <span className="font-mono tabular-nums text-muted-foreground">{b.count}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </Section>
           </div>
 
-          <Section title="Delningar">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-              <Stat label="Delningar" value={shareStats.clicks} prev={prevTotals.byType.share_click ?? 0} />
-              <Stat label="Öppnade delade länkar" value={shareStats.opens} prev={prevTotals.byType.share_open ?? 0} />
-              <Stat
-                label="Öppningar per delning"
-                value={`${shareStats.clicks ? Math.round((shareStats.opens / shareStats.clicks) * 100) : 0} %`}
-              />
-            </div>
-            {shareStats.clicks === 0 && shareStats.opens === 0 ? (
-              <Empty />
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <h4 className="text-sm font-semibold mb-2">Mest delade lokaler</h4>
-                  {shareStats.top.length === 0 ? <Empty /> : (
-                    <ol className="divide-y divide-border">
-                      {shareStats.top.map((c) => (
-                        <li key={c.id} className="flex items-center justify-between py-2 text-sm gap-3">
-                          <span className="truncate">{c.name}</span>
-                          <span className="font-mono tabular-nums text-muted-foreground whitespace-nowrap">
-                            {c.count} delningar · {c.opens} öppningar
-                          </span>
-                        </li>
-                      ))}
-                    </ol>
-                  )}
-                </div>
-                <div className="space-y-4">
-                  <div>
-                    <h4 className="text-sm font-semibold mb-2">Delningssätt</h4>
-                    {shareStats.methods.length === 0 ? <Empty /> : (
-                      <ul className="divide-y divide-border">
-                        {shareStats.methods.map((m) => (
-                          <li key={m.label} className="flex items-center justify-between py-2 text-sm">
-                            <span className="truncate">{m.label}</span>
-                            <span className="font-mono tabular-nums text-muted-foreground">{m.count}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-semibold mb-2">Språk vid delning</h4>
-                    {shareStats.langs.length === 0 ? <Empty /> : (
-                      <ul className="divide-y divide-border">
-                        {shareStats.langs.map((l) => (
-                          <li key={l.label} className="flex items-center justify-between py-2 text-sm">
-                            <span className="truncate">{l.label}</span>
-                            <span className="font-mono tabular-nums text-muted-foreground">{l.count}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-          </Section>
-
-          <Section title="Mest engagerande lokaler">
+          <Section
+            title="Mest engagerande lokaler"
+            help="Lokaler med flest interaktioner. Totalen är summan av utfällda infotexter (i-ikonen), bokningsklick och kartklick — varje typ redovisas separat."
+          >
             {topCards.length === 0 ? <Empty /> : (
               <ol className="divide-y divide-border">
                 {topCards.map((c) => (
-                  <li key={c.id} className="flex items-center justify-between py-2 text-sm">
-                    <span className="truncate">{c.name}</span>
-                    <span className="font-mono tabular-nums text-muted-foreground">{c.count}</span>
+                  <li key={c.id} className="py-2 text-sm">
+                    <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+                      <span className="break-words min-w-0 font-medium">{c.name}</span>
+                      <span className="font-mono tabular-nums text-muted-foreground">{c.count} totalt</span>
+                    </div>
+                    <div className="mt-0.5 text-xs text-muted-foreground tabular-nums">
+                      {c.expand} infotext · {c.booking} bokningsklick · {c.map} kartklick
+                    </div>
                   </li>
                 ))}
               </ol>
@@ -531,24 +575,30 @@ export function AnalyticsTab() {
           </Section>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <Section title="Mest använda filter">
+            <Section
+              title="Mest använda filter"
+              help="Hur ofta varje enskilt filterval förekommer när besökare ändrar filtren. Ett filterbyte kan innehålla flera val samtidigt."
+            >
               {topFilters.length === 0 ? <Empty /> : (
                 <ol className="divide-y divide-border">
                   {topFilters.map(([label, count]) => (
-                    <li key={label} className="flex items-center justify-between py-2 text-sm">
-                      <span className="truncate">{label}</span>
+                    <li key={label} className="flex flex-wrap items-baseline justify-between py-2 text-sm gap-x-3">
+                      <span className="break-words min-w-0">{label}</span>
                       <span className="font-mono tabular-nums text-muted-foreground">{count}</span>
                     </li>
                   ))}
                 </ol>
               )}
             </Section>
-            <Section title="Vanligaste sökord">
+            <Section
+              title="Vanligaste sökord"
+              help="Vad besökarna skriver i sökrutan (sökrutan söker på lokalnamn)."
+            >
               {topQueries.length === 0 ? <Empty /> : (
                 <ol className="divide-y divide-border">
                   {topQueries.map(([q, count]) => (
-                    <li key={q} className="flex items-center justify-between py-2 text-sm">
-                      <span className="truncate">"{q}"</span>
+                    <li key={q} className="flex flex-wrap items-baseline justify-between py-2 text-sm gap-x-3">
+                      <span className="break-words min-w-0">"{q}"</span>
                       <span className="font-mono tabular-nums text-muted-foreground">{count}</span>
                     </li>
                   ))}
@@ -557,14 +607,34 @@ export function AnalyticsTab() {
             </Section>
           </div>
 
-          <Section title="Sökningar utan träff (senaste 30)">
+          <Section
+            title="Mest använda filterkombinationer (topp 10)"
+            help="De vanligaste kombinationerna av filter som besökarna faktiskt använder tillsammans."
+          >
+            {topFilterCombos.length === 0 ? <Empty /> : (
+              <ol className="divide-y divide-border">
+                {topFilterCombos.map(([label, count]) => (
+                  <li key={label} className="flex flex-wrap items-baseline justify-between py-2 text-sm gap-x-3 gap-y-1">
+                    <span className="break-words min-w-0">{label}</span>
+                    <span className="font-mono tabular-nums text-muted-foreground">{count}</span>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </Section>
+
+          <Section
+            title="Sökningar utan träff (senaste 30)"
+            help="Varje gång en besökares sökord och filter gav noll träffar. Visar tidpunkt, sökord, vald kategori och vilka filter som var aktiva."
+          >
             {emptySearches.length === 0 ? <Empty /> : (
               <ul className="divide-y divide-border">
                 {emptySearches.map((e, i) => (
                   <li key={i} className="py-2 text-sm">
                     <div className="text-xs text-muted-foreground">{e.when}</div>
-                    <div className="truncate">
+                    <div className="break-words">
                       {e.query ? <span className="font-medium">"{e.query}"</span> : <span className="italic text-muted-foreground">ingen sökterm</span>}
+                      {e.kind && <span className="text-muted-foreground"> · kategori: {e.kind}</span>}
                       {e.workMode && <span className="text-muted-foreground"> · läge: {e.workMode}</span>}
                       {e.cats && <span className="text-muted-foreground"> · {e.cats}</span>}
                     </div>
@@ -574,12 +644,15 @@ export function AnalyticsTab() {
             )}
           </Section>
 
-          <Section title="Filterkombinationer som ger 0 träffar (topp 10)">
+          <Section
+            title="Filterkombinationer som ger 0 träffar (topp 10)"
+            help="De vanligaste kombinationerna av filter som gav en tom resultatlista. Bra underlag för att se vad besökarna letar efter men inte hittar."
+          >
             {emptyCombos.length === 0 ? <Empty /> : (
               <ol className="divide-y divide-border">
                 {emptyCombos.map(([label, count]) => (
-                  <li key={label} className="flex items-center justify-between py-2 text-sm gap-3">
-                    <span className="truncate">{label}</span>
+                  <li key={label} className="flex flex-wrap items-baseline justify-between py-2 text-sm gap-x-3 gap-y-1">
+                    <span className="break-words min-w-0">{label}</span>
                     <span className="font-mono tabular-nums text-muted-foreground">{count}</span>
                   </li>
                 ))}
@@ -588,7 +661,10 @@ export function AnalyticsTab() {
           </Section>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <Section title="Enhet (sidvisningar)">
+            <Section
+              title="Enhet (sidvisningar)"
+              help="Fördelning mellan mobil, surfplatta och desktop, baserat på sidvisningar."
+            >
               {deviceBreakdown.length === 0 ? <Empty /> : (
                 <ul className="space-y-2">
                   {deviceBreakdown.map((d) => (
@@ -607,12 +683,15 @@ export function AnalyticsTab() {
                 </ul>
               )}
             </Section>
-            <Section title="Källor (referrer / UTM)">
+            <Section
+              title="Källor (referrer / UTM)"
+              help="Varifrån besökarna kom: ”direkt” = ingen känd hänvisande sida, annars domän eller UTM-kampanj i länken."
+            >
               {sourceBreakdown.length === 0 ? <Empty /> : (
                 <ol className="divide-y divide-border">
                   {sourceBreakdown.map(([label, count]) => (
-                    <li key={label} className="flex items-center justify-between py-2 text-sm">
-                      <span className="truncate">{label}</span>
+                    <li key={label} className="flex flex-wrap items-baseline justify-between py-2 text-sm gap-x-3">
+                      <span className="break-words min-w-0">{label}</span>
                       <span className="font-mono tabular-nums text-muted-foreground">{count}</span>
                     </li>
                   ))}
@@ -621,7 +700,107 @@ export function AnalyticsTab() {
             </Section>
           </div>
 
-          <Section title="Heatmap: veckodag × timme (sidvisningar)">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <Section
+              title="Trafik per timme på dygnet"
+              help="Antal sidvisningar fördelat på klockslag (0–23) i vald period. Visar vilka tider tjänsten används mest."
+            >
+              <div className="h-48">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={trafficByHour}>
+                    <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+                    <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
+                    <Tooltip />
+                    <Bar dataKey="value" fill="var(--primary)" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </Section>
+            <Section
+              title="Trafik per veckodag"
+              help="Antal sidvisningar fördelat på veckodag i vald period."
+            >
+              <div className="h-48">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={trafficByWeekday}>
+                    <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
+                    <Tooltip />
+                    <Bar dataKey="value" fill="var(--primary)" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </Section>
+          </div>
+
+          <Section
+            title="Delningar"
+            help="Klick på delningsikonen på lokalkorten, samt hur många gånger en delad länk faktiskt öppnats av någon."
+          >
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+              <Stat label="Delningar" value={shareStats.clicks} prev={prevTotals.byType.share_click ?? 0} />
+              <Stat label="Öppnade delade länkar" value={shareStats.opens} prev={prevTotals.byType.share_open ?? 0} />
+              <Stat
+                label="Öppningar per delning"
+                value={`${shareStats.clicks ? Math.round((shareStats.opens / shareStats.clicks) * 100) : 0} %`}
+                help="Andel delningar som lett till att någon öppnat länken."
+              />
+            </div>
+            {shareStats.clicks === 0 && shareStats.opens === 0 ? (
+              <Empty />
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <h4 className="text-sm font-semibold mb-2">Mest delade lokaler</h4>
+                  {shareStats.top.length === 0 ? <Empty /> : (
+                    <ol className="divide-y divide-border">
+                      {shareStats.top.map((c) => (
+                        <li key={c.id} className="flex flex-wrap items-baseline justify-between py-2 text-sm gap-x-3 gap-y-1">
+                          <span className="break-words min-w-0">{c.name}</span>
+                          <span className="font-mono tabular-nums text-muted-foreground">
+                            {c.count} delningar · {c.opens} öppningar
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="text-sm font-semibold mb-2">Delningssätt</h4>
+                    {shareStats.methods.length === 0 ? <Empty /> : (
+                      <ul className="divide-y divide-border">
+                        {shareStats.methods.map((m) => (
+                          <li key={m.label} className="flex flex-wrap items-baseline justify-between py-2 text-sm gap-x-3">
+                            <span className="break-words min-w-0">{m.label}</span>
+                            <span className="font-mono tabular-nums text-muted-foreground">{m.count}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-semibold mb-2">Språk vid delning</h4>
+                    {shareStats.langs.length === 0 ? <Empty /> : (
+                      <ul className="divide-y divide-border">
+                        {shareStats.langs.map((l) => (
+                          <li key={l.label} className="flex flex-wrap items-baseline justify-between py-2 text-sm gap-x-3">
+                            <span className="break-words min-w-0">{l.label}</span>
+                            <span className="font-mono tabular-nums text-muted-foreground">{l.count}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </Section>
+
+          <Section
+            title="Heatmap: veckodag × timme (sidvisningar)"
+            help="Rutnät där varje ruta är en timme en viss veckodag. Mörkare ruta = fler sidvisningar."
+          >
             <Heatmap grid={heatmap.grid} max={heatmap.max} />
           </Section>
         </>
@@ -669,7 +848,22 @@ function DatePicker({
   );
 }
 
-function Stat({ label, value, prev }: { label: string; value: number | string; prev?: number }) {
+function HelpTip({ text }: { text: string }) {
+  return (
+    <button
+      type="button"
+      tabIndex={0}
+      title={text}
+      aria-label={text}
+      className="inline-flex shrink-0 text-muted-foreground/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-full align-middle"
+      onClick={(e) => e.preventDefault()}
+    >
+      <Info className="h-3.5 w-3.5" aria-hidden="true" />
+    </button>
+  );
+}
+
+function Stat({ label, value, prev, help }: { label: string; value: number | string; prev?: number; help?: string }) {
   let delta: { pct: number; dir: "up" | "down" | "flat" } | null = null;
   if (typeof value === "number" && typeof prev === "number") {
     if (prev === 0 && value === 0) delta = { pct: 0, dir: "flat" };
@@ -684,7 +878,10 @@ function Stat({ label, value, prev }: { label: string; value: number | string; p
   const arrow = delta?.dir === "up" ? "▲" : delta?.dir === "down" ? "▼" : "→";
   return (
     <div className="rounded-xl border border-border bg-card p-4">
-      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="text-xs text-muted-foreground flex items-center gap-1">
+        <span>{label}</span>
+        {help && <HelpTip text={help} />}
+      </div>
       <div className="mt-1 text-2xl font-bold tabular-nums">
         {typeof value === "number" ? value.toLocaleString("sv-SE") : value}
       </div>
@@ -698,10 +895,13 @@ function Stat({ label, value, prev }: { label: string; value: number | string; p
 }
 
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, children, help }: { title: string; children: React.ReactNode; help?: string }) {
   return (
     <div className="rounded-xl border border-border bg-card p-4">
-      <h3 className="text-sm font-semibold mb-2">{title}</h3>
+      <h3 className="text-sm font-semibold mb-2 flex items-center gap-1.5">
+        <span>{title}</span>
+        {help && <HelpTip text={help} />}
+      </h3>
       {children}
     </div>
   );

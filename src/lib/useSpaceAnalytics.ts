@@ -18,7 +18,7 @@ export function useSpaceAnalytics(space: Pick<Space, "id" | "name">) {
   }, [id, name]);
 
   const trackBooking = useCallback(
-    (kind: "booking" | "group_booking") => {
+    (kind: "booking" | "group_booking" | "book_now") => {
       track("booking_link_click", { space_id: id, name, kind });
     },
     [id, name],

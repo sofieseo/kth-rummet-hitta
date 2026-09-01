@@ -31,7 +31,7 @@ export function exportAnalyticsToExcel(rows: Row[], from: Date, to: Date): void 
     if (r.event_type === "booking_link_click" && r.session_id) sessionsBooked.add(r.session_id);
   }
   const totalSessions = sessions.size || 1;
-  const summary = [
+  const summary: (string | number)[][] = [
     ["Period från", fmtDate(from)],
     ["Period till", fmtDate(to)],
     [],
@@ -50,6 +50,34 @@ export function exportAnalyticsToExcel(rows: Row[], from: Date, to: Date): void 
     ["Andel sessioner som expanderade kort", `${((sessionsExpanded.size / totalSessions) * 100).toFixed(1)}%`],
     ["Andel sessioner med bokningsklick", `${((sessionsBooked.size / totalSessions) * 100).toFixed(1)}%`],
   ];
+  const kindLabels: Record<string, string> = {
+    study: "Studieplats",
+    creative: "Skapande och paus",
+    service: "Service och faciliteter",
+  };
+  const kindCounts: Record<string, number> = {};
+  const bookingKindCounts: Record<string, number> = {};
+  for (const r of rows) {
+    const p = (r.payload ?? {}) as Record<string, unknown>;
+    if (r.event_type === "filter_change" && p.spaceKind) {
+      const k = kindLabels[String(p.spaceKind)] ?? String(p.spaceKind);
+      kindCounts[k] = (kindCounts[k] ?? 0) + 1;
+    }
+    if (r.event_type === "booking_link_click") {
+      const labels: Record<string, string> = {
+        book_now: "Boka nu",
+        group_booking: "Boka grupprum",
+        booking: "Se schema",
+      };
+      const k = labels[String(p.kind ?? "")] ?? "Okänd knapp";
+      bookingKindCounts[k] = (bookingKindCounts[k] ?? 0) + 1;
+    }
+  }
+  summary.push([], ["Valda kategorier", ""]);
+  for (const [k, v] of Object.entries(kindCounts).sort((a, b) => b[1] - a[1])) summary.push([k, v]);
+  summary.push([], ["Bokningsklick per knapp", ""]);
+  for (const [k, v] of Object.entries(bookingKindCounts).sort((a, b) => b[1] - a[1])) summary.push([k, v]);
+
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summary), "Sammanfattning");
 
   // Lokaler

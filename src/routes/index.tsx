@@ -474,6 +474,7 @@ function SpaceFinderApp() {
     filters,
     (f) => ({
       query: f.query.trim() || undefined,
+      spaceKind: f.spaceKind ?? undefined,
       workMode: f.workMode ?? undefined,
       groupSize: f.groupSize ?? undefined,
       freeOnly: f.freeOnly || undefined,
@@ -487,6 +488,7 @@ function SpaceFinderApp() {
     if (!isLoading && hasActiveFilter && filtered.length === 0) {
       track("empty_results", {
         query: filters.query.trim() || undefined,
+        spaceKind: filters.spaceKind ?? undefined,
         workMode: filters.workMode ?? undefined,
         categories: Object.fromEntries(
           Object.entries(filters.byCategory).filter(([, v]) => v.length > 0),
