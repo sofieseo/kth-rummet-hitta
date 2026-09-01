@@ -6,17 +6,27 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon, Download, Info } from "lucide-react";
 import { sv } from "date-fns/locale";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 import {
   BarChart,
   Bar,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
+  CartesianGrid,
+  Legend,
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
 import { cn } from "@/lib/utils";
 import { exportAnalyticsToExcel } from "@/lib/analyticsExport";
+import { matchesSpace } from "@/lib/filterMatch";
+import { groupRoomLabels, isGroupRoomSpace } from "@/lib/groupRoom";
+import { emptyFilters, type Filters } from "@/components/FilterPanel";
+import type { FilterCategoryRow, FilterOption, Space } from "@/lib/spaces";
+
+
 
 type Row = {
   id: number;
@@ -27,7 +37,30 @@ type Row = {
   created_at: string;
 };
 
+type DemandSupplyItem = {
+  categoryKey: string;
+  categoryLabel: string;
+  valueKey: string;
+  valueLabel: string;
+  demand: number;
+  supply: number;
+};
+
+type EmptyComboWithSuggestion = {
+  filters: string;
+  count: number;
+  suggestion: string;
+};
+
+type TrendRow = {
+  date: string;
+  total: number;
+  empty: number;
+  [seriesKey: string]: number | string;
+};
+
 const PRESETS = [
+
   { key: "24h", label: "24 timmar", hours: 24 },
   { key: "7d", label: "7 dagar", hours: 24 * 7 },
   { key: "30d", label: "30 dagar", hours: 24 * 30 },
@@ -52,7 +85,63 @@ const KIND_LABELS: Record<string, string> = {
   service: "Service och faciliteter",
 };
 
-export function AnalyticsTab() {
+const TREND_COLORS = [
+  "var(--primary)",
+  "var(--chart-2, #10b981)",
+  "var(--chart-3, #f59e0b)",
+  "var(--chart-4, #ef4444)",
+  "var(--chart-5, #8b5cf6)",
+];
+
+function valueLabelFor(categoryKey: string, value: string, filterOptions: FilterOption[]): string {
+  if (categoryKey === "spaceKind") return KIND_LABELS[value] ?? value;
+  if (categoryKey === "freeOnly") return "Endast lediga grupprum";
+  const opt = filterOptions.find((o) => o.category === categoryKey && o.label === value);
+  return opt?.label ?? value;
+}
+
+function categoryLabelFor(key: string, categories: FilterCategoryRow[]): string {
+  if (key === "spaceKind") return "Kategori";
+  if (key === "workMode") return "Läge";
+  if (key === "groupSize") return "Grupprumsstorlek";
+  if (key === "freeOnly") return "Endast lediga";
+  return categories.find((c) => c.key === key)?.title ?? key;
+}
+
+function buildFiltersFromPayload(p: Record<string, unknown>): Filters {
+  const cats = (p.categories ?? {}) as Record<string, string[]>;
+  return {
+    query: String(p.query ?? ""),
+    spaceKind: String(p.spaceKind ?? "study") as Space["space_kind"],
+    workMode: p.workMode ? String(p.workMode) : null,
+    groupSize:
+      p.groupSize === "2-4" || p.groupSize === "5+"
+        ? (p.groupSize as "2-4" | "5+")
+        : null,
+    freeOnly: Boolean(p.freeOnly),
+    byCategory: { ...cats },
+  };
+}
+
+function countMatchingSpaces(
+  test: Filters,
+  spaces: Space[],
+  categories: FilterCategoryRow[],
+  isGroupRoom: (s: Space) => boolean,
+): number {
+  return spaces.filter((s) => matchesSpace(s, test, categories, { isGroupRoom })).length;
+}
+
+export function AnalyticsTab({
+  spaces,
+  categories,
+  filterOptions,
+}: {
+  spaces: Space[];
+  categories: FilterCategoryRow[];
+  filterOptions: FilterOption[];
+}) {
+
   const [preset, setPreset] = useState<PresetKey>("7d");
   const [customFrom, setCustomFrom] = useState<Date | undefined>(() => {
     const d = new Date();
@@ -373,6 +462,200 @@ export function AnalyticsTab() {
     };
   }, [rows]);
 
+  const isGroupRoom = useMemo(() => {
+    const labels = groupRoomLabels(filterOptions);
+    return (s: Space) => isGroupRoomSpace(s, labels);
+  }, [filterOptions]);
+
+  const demandSupply = useMemo<DemandSupplyItem[]>(() => {
+    const demand = new Map<string, number>();
+    const add = (categoryKey: string, value: string) => {
+      if (!value) return;
+      const key = `${categoryKey}\x00${value}`;
+      demand.set(key, (demand.get(key) ?? 0) + 1);
+    };
+    for (const r of rows) {
+      if (r.event_type !== "filter_change") continue;
+      const p = (r.payload ?? {}) as Record<string, unknown>;
+      if (p.spaceKind) add("spaceKind", String(p.spaceKind));
+      if (p.workMode) add("workMode", String(p.workMode));
+      if (p.groupSize) add("groupSize", String(p.groupSize));
+      if (p.freeOnly) add("freeOnly", "lediga");
+      const cats = (p.categories ?? {}) as Record<string, string[]>;
+      for (const [cat, vals] of Object.entries(cats)) {
+        for (const v of vals ?? []) add(cat, v);
+      }
+    }
+
+    const items: DemandSupplyItem[] = [];
+    for (const [key, demandCount] of demand.entries()) {
+      const [categoryKey, valueKey] = key.split("\x00");
+      let supply = 0;
+      if (categoryKey === "spaceKind") {
+        supply = spaces.filter((s) => s.space_kind === valueKey).length;
+      } else if (categoryKey === "workMode") {
+        supply = countMatchingSpaces(
+          { ...emptyFilters, workMode: valueKey as Filters["workMode"] },
+          spaces,
+          categories,
+          isGroupRoom,
+        );
+      } else if (categoryKey === "groupSize") {
+        supply = countMatchingSpaces(
+          { ...emptyFilters, workMode: "grupprum", groupSize: valueKey as Filters["groupSize"] },
+          spaces,
+          categories,
+          isGroupRoom,
+        );
+      } else if (categoryKey !== "freeOnly") {
+        supply = countMatchingSpaces(
+          { ...emptyFilters, byCategory: { [categoryKey]: [valueKey] } },
+          spaces,
+          categories,
+          isGroupRoom,
+        );
+      }
+      items.push({
+        categoryKey,
+        categoryLabel: categoryLabelFor(categoryKey, categories),
+        valueKey,
+        valueLabel: valueLabelFor(categoryKey, valueKey, filterOptions),
+        demand: demandCount,
+        supply,
+      });
+    }
+    return items.sort((a, b) => b.demand - a.demand);
+  }, [rows, spaces, categories, filterOptions, isGroupRoom]);
+
+  const demandSupplyByCategory = useMemo(() => {
+    const map: Record<string, DemandSupplyItem[]> = {};
+    for (const item of demandSupply) {
+      (map[item.categoryKey] ??= []).push(item);
+    }
+    for (const list of Object.values(map)) {
+      list.sort((a, b) => b.demand - a.demand);
+    }
+    return map;
+  }, [demandSupply]);
+
+  const emptyResultsWithSuggestions = useMemo<EmptyComboWithSuggestion[]>(() => {
+    const combos = new Map<
+      string,
+      { filters: Filters; displayParts: string[]; count: number }
+    >();
+    for (const r of rows) {
+      if (r.event_type !== "empty_results") continue;
+      const p = (r.payload ?? {}) as Record<string, unknown>;
+      const filters = buildFiltersFromPayload(p);
+      const parts: string[] = [];
+      if (filters.query) parts.push(`sökord: ${filters.query}`);
+      if (p.spaceKind) parts.push(`kategori: ${KIND_LABELS[String(p.spaceKind)] ?? String(p.spaceKind)}`);
+      if (filters.workMode) parts.push(`läge: ${filters.workMode}`);
+      if (filters.groupSize) parts.push(`storlek: ${filters.groupSize}`);
+      if (filters.freeOnly) parts.push("endast lediga grupprum");
+      for (const [cat, vals] of Object.entries(filters.byCategory)) {
+        const catLabel = categoryLabelFor(cat, categories);
+        for (const v of vals) parts.push(`${catLabel}: ${valueLabelFor(cat, v, filterOptions)}`);
+      }
+      const key = parts.sort().join(" · ");
+      const existing = combos.get(key);
+      if (existing) {
+        existing.count++;
+      } else {
+        combos.set(key, { filters, displayParts: parts, count: 1 });
+      }
+    }
+
+    const out: EmptyComboWithSuggestion[] = [];
+    for (const { filters, displayParts, count } of combos.values()) {
+      const candidates: { label: string; test: Filters }[] = [];
+      if (filters.query) candidates.push({ label: "sökord", test: { ...filters, query: "" } });
+      if (filters.workMode) candidates.push({ label: "läge", test: { ...filters, workMode: null } });
+      if (filters.groupSize) candidates.push({ label: "grupprumsstorlek", test: { ...filters, groupSize: null } });
+      if (filters.freeOnly) candidates.push({ label: "endast lediga", test: { ...filters, freeOnly: false } });
+      for (const [cat, vals] of Object.entries(filters.byCategory)) {
+        const catLabel = categoryLabelFor(cat, categories);
+        for (const v of vals) {
+          const nextVals = vals.filter((x) => x !== v);
+          const nextByCat = { ...filters.byCategory, [cat]: nextVals };
+          let nextFilters: Filters;
+          if (nextVals.length === 0) {
+            const { [cat]: _, ...rest } = nextByCat;
+            nextFilters = { ...filters, byCategory: rest };
+          } else {
+            nextFilters = { ...filters, byCategory: nextByCat };
+          }
+          candidates.push({
+            label: `${catLabel}: ${valueLabelFor(cat, v, filterOptions)}`,
+            test: nextFilters,
+          });
+        }
+      }
+
+      let best: { label: string; count: number } | null = null;
+      for (const c of candidates) {
+        const n = countMatchingSpaces(c.test, spaces, categories, isGroupRoom);
+        if (n > 0 && (!best || n > best.count)) best = { label: c.label, count: n };
+      }
+      const suggestion = best
+        ? `Om du tar bort ${best.label} visas ${best.count} ${best.count === 1 ? "lokal" : "lokaler"}`
+        : "Inget enstaka filter kan tas bort för att ge träffar";
+      out.push({ filters: displayParts.join(" · "), count, suggestion });
+    }
+    return out.sort((a, b) => b.count - a.count).slice(0, 10);
+  }, [rows, spaces, categories, filterOptions, isGroupRoom]);
+
+  const trendData = useMemo(() => {
+    const topValues = demandSupply.slice(0, 5);
+    const seriesKeys = topValues.map((v) => `${v.categoryKey}:${v.valueKey}`);
+    const seriesLabels = topValues.map((v) => `${v.categoryLabel}: ${v.valueLabel}`);
+    const buckets = new Map<string, { total: number; empty: number; values: Record<string, number> }>();
+    const ensure = (day: string) => {
+      if (!buckets.has(day)) buckets.set(day, { total: 0, empty: 0, values: {} });
+      return buckets.get(day)!;
+    };
+    for (const r of rows) {
+      const day = r.created_at.slice(0, 10);
+      if (r.event_type === "empty_results") {
+        ensure(day).empty++;
+        continue;
+      }
+      if (r.event_type !== "filter_change") continue;
+      const bucket = ensure(day);
+      bucket.total++;
+      const p = (r.payload ?? {}) as Record<string, unknown>;
+      for (let i = 0; i < topValues.length; i++) {
+        const item = topValues[i];
+        let hit = false;
+        if (item.categoryKey === "spaceKind" && String(p.spaceKind ?? "") === item.valueKey) hit = true;
+        else if (item.categoryKey === "workMode" && String(p.workMode ?? "") === item.valueKey) hit = true;
+        else if (item.categoryKey === "groupSize" && String(p.groupSize ?? "") === item.valueKey) hit = true;
+        else if (item.categoryKey === "freeOnly" && p.freeOnly) hit = true;
+        else {
+          const cats = (p.categories ?? {}) as Record<string, string[]>;
+          if ((cats[item.categoryKey] ?? []).includes(item.valueKey)) hit = true;
+        }
+        if (hit) bucket.values[seriesKeys[i]] = (bucket.values[seriesKeys[i]] ?? 0) + 1;
+      }
+    }
+
+    const points: TrendRow[] = [];
+    const start = new Date(from);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(to);
+    end.setHours(0, 0, 0, 0);
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const iso = d.toISOString().slice(0, 10);
+      const bucket = buckets.get(iso) ?? { total: 0, empty: 0, values: {} };
+      const point: TrendRow = { date: iso, total: bucket.total, empty: bucket.empty };
+      for (let i = 0; i < seriesKeys.length; i++) {
+        point[seriesKeys[i]] = bucket.values[seriesKeys[i]] ?? 0;
+      }
+      points.push(point);
+    }
+    return { points, series: seriesKeys.map((k, i) => ({ key: k, label: seriesLabels[i] })) };
+  }, [rows, demandSupply, from, to]);
+
   const heatmap = useMemo(() => {
     // 7 rows (Mon-Sun) x 24 cols
     const grid: number[][] = Array.from({ length: 7 }, () => new Array(24).fill(0));
@@ -386,6 +669,7 @@ export function AnalyticsTab() {
     for (const row of grid) for (const v of row) if (v > max) max = v;
     return { grid, max };
   }, [rows]);
+
 
 
   return (
@@ -410,7 +694,13 @@ export function AnalyticsTab() {
             variant="outline"
             size="sm"
             disabled={rows.length === 0}
-            onClick={() => exportAnalyticsToExcel(rows, from, to)}
+            onClick={() =>
+              exportAnalyticsToExcel(rows, from, to, {
+                demandSupply,
+                emptyWithAlternatives: emptyResultsWithSuggestions,
+                trend: trendData,
+              })
+            }
           >
             <Download className="h-4 w-4 mr-2" /> Exportera Excel
           </Button>
@@ -624,7 +914,116 @@ export function AnalyticsTab() {
           </Section>
 
           <Section
+            title="Efterfrågan vs utbud per filter"
+            help="Visar hur många gånger ett filter valts jämfört med hur många lokaler som matchar det. Ett lågt utbud i förhållande till efterfrågan tyder på att studenterna letar efter något som inte finns."
+          >
+            {demandSupply.length === 0 ? <Empty /> : (
+              <div className="space-y-4">
+                {Object.entries(demandSupplyByCategory).map(([categoryLabel, items]) => (
+                  <div key={categoryLabel}>
+                    <h4 className="text-sm font-semibold mb-2">{categoryLabel}</h4>
+                    <ul className="divide-y divide-border">
+                      {items.map((item) => {
+                        const ratio = item.demand > 0 ? item.supply / item.demand : 0;
+                        return (
+                          <li key={`${item.categoryKey}-${item.valueKey}`} className="py-2 text-sm">
+                            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                              <span className="break-words min-w-0">{item.valueLabel}</span>
+                              <span className="font-mono tabular-nums text-muted-foreground">
+                                {item.demand.toLocaleString("sv-SE")} val · {item.supply} lokal{item.supply === 1 ? "" : "er"}
+                              </span>
+                            </div>
+                            <div className="mt-1.5 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                              <div>
+                                <span className="text-muted-foreground">Efterfrågan</span>
+                                <div className="h-2 rounded bg-muted overflow-hidden mt-0.5">
+                                  <div
+                                    className="h-full bg-primary"
+                                    style={{ width: `${Math.min(100, (item.demand / Math.max(item.demand, item.supply, 1)) * 100)}%` }}
+                                  />
+                                </div>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">Utbud</span>
+                                <div className="h-2 rounded bg-muted overflow-hidden mt-0.5">
+                                  <div
+                                    className="h-full bg-emerald-500"
+                                    style={{ width: `${Math.min(100, (item.supply / Math.max(item.demand, item.supply, 1)) * 100)}%` }}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                            <div className="mt-0.5 text-xs text-muted-foreground">
+                              {ratio < 1
+                                ? `Efterfrågan överstiger utbudet (${(ratio * 100).toFixed(0)}% täckning)`
+                                : ratio === 0 && item.demand > 0
+                                  ? "Ingen lokal matchar detta filter"
+                                  : `Utbudet täcker efterfrågan (${(ratio * 100).toFixed(0)}% täckning)`}
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Section>
+
+          <Section
+            title="Sökningar utan träff – närmaste alternativ"
+            help="Vanliga filterkombinationer som gav noll träffar, med förslag på vilket enskilt filter du kan ta bort för att flest lokaler ska visas."
+          >
+            {emptyResultsWithSuggestions.length === 0 ? <Empty /> : (
+              <ol className="divide-y divide-border">
+                {emptyResultsWithSuggestions.map((e, i) => (
+                  <li key={i} className="py-3 text-sm">
+                    <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                      <span className="font-medium break-words min-w-0">{e.filters || "(inga filter)"}</span>
+                      <span className="font-mono tabular-nums text-muted-foreground">{e.count} sökningar</span>
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground break-words">{e.suggestion}</div>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </Section>
+
+          <Section
+            title="Trender – toppfilter och sökningar utan träff"
+            help="Visar hur de fem mest valda filtren och antalet sökningar utan träff har förändrats dag för dag under vald period."
+          >
+            {trendData.points.length === 0 || trendData.series.length === 0 ? <Empty /> : (
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={trendData.points} margin={{ top: 8, right: 8, bottom: 0, left: -12 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="date" tick={{ fontSize: 10 }} tickFormatter={(v) => format(parseISO(v), "d MMM", { locale: sv })} />
+                    <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
+                    <Tooltip labelFormatter={(v) => format(parseISO(String(v)), "d MMMM yyyy", { locale: sv })} />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <Line type="monotone" dataKey="total" name="Filterändringar" stroke="var(--primary)" strokeWidth={2} dot={false} />
+                    <Line type="monotone" dataKey="empty" name="Sök utan träff" stroke="var(--destructive, #ef4444)" strokeWidth={2} dot={false} />
+                    {trendData.series.map((s, i) => (
+                      <Line
+                        key={s.key}
+                        type="monotone"
+                        dataKey={s.key}
+                        name={s.label}
+                        stroke={TREND_COLORS[(i + 1) % TREND_COLORS.length]}
+                        strokeWidth={2}
+                        dot={false}
+                      />
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </Section>
+
+          <Section
             title="Sökningar utan träff (senaste 30)"
+
             help="Varje gång en besökares sökord och filter gav noll träffar. Visar tidpunkt, sökord, vald kategori och vilka filter som var aktiva."
           >
             {emptySearches.length === 0 ? <Empty /> : (

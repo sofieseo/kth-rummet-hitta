@@ -9,6 +9,33 @@ type Row = {
   created_at: string;
 };
 
+type DemandSupplyItem = {
+  categoryKey: string;
+  categoryLabel: string;
+  valueKey: string;
+  valueLabel: string;
+  demand: number;
+  supply: number;
+};
+
+type EmptyWithSuggestion = {
+  filters: string;
+  count: number;
+  suggestion: string;
+};
+
+type TrendPoint = {
+  date: string;
+  total: number;
+  empty: number;
+  [seriesKey: string]: number | string;
+};
+
+type TrendData = {
+  points: TrendPoint[];
+  series: { key: string; label: string }[];
+};
+
 function fmtDate(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -16,7 +43,17 @@ function fmtDate(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-export function exportAnalyticsToExcel(rows: Row[], from: Date, to: Date): void {
+export function exportAnalyticsToExcel(
+  rows: Row[],
+  from: Date,
+  to: Date,
+  extra?: {
+    demandSupply: DemandSupplyItem[];
+    emptyWithAlternatives: EmptyWithSuggestion[];
+    trend: TrendData;
+  },
+): void {
+
   const wb = XLSX.utils.book_new();
 
   // Summary
@@ -211,6 +248,48 @@ export function exportAnalyticsToExcel(rows: Row[], from: Date, to: Date): void 
     ]);
   }
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rawRows), "Råhändelser");
+
+  // Efterfrågan vs utbud
+  if (extra?.demandSupply?.length) {
+    const dsRows: (string | number)[][] = [["Kategori", "Filtervärde", "Efterfrågan (valda gånger)", "Utbud (antal lokaler)"]];
+    const grouped = new Map<string, DemandSupplyItem[]>();
+    for (const item of extra.demandSupply) {
+      const list = grouped.get(item.categoryLabel) ?? [];
+      list.push(item);
+      grouped.set(item.categoryLabel, list);
+    }
+    for (const [cat, items] of grouped.entries()) {
+      dsRows.push([cat, "", "", ""]);
+      for (const item of items) {
+        dsRows.push(["", item.valueLabel, item.demand, item.supply]);
+      }
+      dsRows.push(["", "", "", ""]);
+    }
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dsRows), "Efterfrågan vs utbud");
+  }
+
+  // Sök utan träff med förslag
+  if (extra?.emptyWithAlternatives?.length) {
+    const emptyAltRows: (string | number)[][] = [["Filterkombination", "Antal sökningar", "Närmaste alternativ"]];
+    for (const e of extra.emptyWithAlternatives) {
+      emptyAltRows.push([e.filters, e.count, e.suggestion]);
+    }
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(emptyAltRows), "Sök utan träff med förslag");
+  }
+
+  // Trend över tid
+  if (extra?.trend?.points.length && extra.trend.series.length) {
+    const trendRows: (string | number)[][] = [["Datum", "Filterändringar", "Sök utan träff", ...extra.trend.series.map((s) => s.label)]];
+    for (const p of extra.trend.points) {
+      trendRows.push([
+        p.date,
+        p.total,
+        p.empty,
+        ...extra.trend.series.map((s) => (p[s.key] as number) ?? 0),
+      ]);
+    }
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(trendRows), "Trender");
+  }
 
   XLSX.writeFile(wb, `statistik_${fmtDate(from)}_till_${fmtDate(to)}.xlsx`);
 }

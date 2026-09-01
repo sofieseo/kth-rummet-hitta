@@ -1061,7 +1061,7 @@ function AdminPage() {
 
 
           <TabsContent value="analytics">
-            <AnalyticsTab />
+            <AnalyticsTab spaces={spaces} categories={categories} filterOptions={filterOptions} />
           </TabsContent>
         </Tabs>
       </main>
