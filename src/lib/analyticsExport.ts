@@ -251,7 +251,7 @@ export function exportAnalyticsToExcel(
 
   // Efterfrågan vs utbud
   if (extra?.demandSupply?.length) {
-    const dsRows: (string | number)[][] = [["Kategori", "Filtervärde", "Efterfrågan (valda gånger)", "Utbud (antal lokaler)"]];
+    const dsRows: (string | number)[][] = [["Kategori", "Filterkombination", "Efterfrågan (antal sökningar)", "Utbud (antal lokaler)"]];
     const grouped = new Map<string, DemandSupplyItem[]>();
     for (const item of extra.demandSupply) {
       const list = grouped.get(item.categoryLabel) ?? [];
