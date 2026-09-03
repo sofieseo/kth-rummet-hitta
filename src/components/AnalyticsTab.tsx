@@ -1342,7 +1342,7 @@ function Empty() {
   return <p className="text-sm text-muted-foreground">Ingen data ännu.</p>;
 }
 
-function Heatmap({ grid, max }: { grid: number[][]; max: number }) {
+function Heatmap({ grid, max, decimals = 0 }: { grid: number[][]; max: number; decimals?: number }) {
   const days = ["Mån", "Tis", "Ons", "Tor", "Fre", "Lör", "Sön"];
   if (max === 0) return <Empty />;
   return (
@@ -1363,7 +1363,7 @@ function Heatmap({ grid, max }: { grid: number[][]; max: number }) {
                 return (
                   <div
                     key={h}
-                    title={`${days[dow]} ${String(h).padStart(2, "0")}:00 · ${v} sidvisningar`}
+                    title={`${days[dow]} ${String(h).padStart(2, "0")}:00 · ${v.toFixed(decimals)} sidvisningar`}
                     className="aspect-square rounded-sm border border-border/40"
                     style={{
                       backgroundColor: `color-mix(in oklab, var(--primary) ${Math.round((0.06 + intensity * 0.9) * 100)}%, transparent)`,
