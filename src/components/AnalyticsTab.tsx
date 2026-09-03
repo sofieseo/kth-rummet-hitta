@@ -64,6 +64,8 @@ const PRESETS = [
   { key: "24h", label: "24 timmar", hours: 24 },
   { key: "7d", label: "7 dagar", hours: 24 * 7 },
   { key: "30d", label: "30 dagar", hours: 24 * 30 },
+  { key: "90d", label: "90 dagar", hours: 24 * 90 },
+  { key: "365d", label: "12 månader", hours: 24 * 365 },
   { key: "custom", label: "Anpassad", hours: 0 },
 ] as const;
 type PresetKey = (typeof PRESETS)[number]["key"];
@@ -143,6 +145,7 @@ export function AnalyticsTab({
 }) {
 
   const [preset, setPreset] = useState<PresetKey>("7d");
+  const [heatmapMode, setHeatmapMode] = useState<"total" | "avg">("total");
   const [customFrom, setCustomFrom] = useState<Date | undefined>(() => {
     const d = new Date();
     d.setDate(d.getDate() - 6);
@@ -665,10 +668,13 @@ export function AnalyticsTab({
       const dow = (d.getDay() + 6) % 7; // Mon=0
       grid[dow][d.getHours()]++;
     }
+    const weeks = Math.max(1, (to.getTime() - from.getTime()) / (7 * 24 * 3600 * 1000));
+    const averaged = grid.map((row) => row.map((v) => v / weeks));
     let max = 0;
     for (const row of grid) for (const v of row) if (v > max) max = v;
-    return { grid, max };
-  }, [rows]);
+    return { grid, averaged, weeks, max, maxAvg: max / weeks };
+  }, [rows, from, to]);
+
 
 
 
@@ -1198,9 +1204,35 @@ export function AnalyticsTab({
 
           <Section
             title="Heatmap: veckodag × timme (sidvisningar)"
-            help="Rutnät där varje ruta är en timme en viss veckodag. Mörkare ruta = fler sidvisningar."
+            help="Rutnät där varje ruta är en timme en viss veckodag, summerat över hela den valda perioden. Mörkare ruta = fler sidvisningar. Välj en längre period ovan för att se mönster över flera veckor, och växla till snitt per vecka för att jämföra perioder av olika längd."
           >
-            <Heatmap grid={heatmap.grid} max={heatmap.max} />
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <div className="inline-flex overflow-hidden rounded-full border border-border bg-card text-xs">
+                {(
+                  [
+                    { key: "total", label: "Totalt" },
+                    { key: "avg", label: "Snitt per vecka" },
+                  ] as const
+                ).map((m) => (
+                  <button
+                    key={m.key}
+                    type="button"
+                    onClick={() => setHeatmapMode(m.key)}
+                    className={`px-3 py-1.5 ${heatmapMode === m.key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+              <span className="text-xs text-muted-foreground">
+                {heatmap.weeks.toFixed(1)} veckor i vald period
+              </span>
+            </div>
+            <Heatmap
+              grid={heatmapMode === "avg" ? heatmap.averaged : heatmap.grid}
+              max={heatmapMode === "avg" ? heatmap.maxAvg : heatmap.max}
+              decimals={heatmapMode === "avg" ? 1 : 0}
+            />
           </Section>
         </>
 
@@ -1310,7 +1342,7 @@ function Empty() {
   return <p className="text-sm text-muted-foreground">Ingen data ännu.</p>;
 }
 
-function Heatmap({ grid, max }: { grid: number[][]; max: number }) {
+function Heatmap({ grid, max, decimals = 0 }: { grid: number[][]; max: number; decimals?: number }) {
   const days = ["Mån", "Tis", "Ons", "Tor", "Fre", "Lör", "Sön"];
   if (max === 0) return <Empty />;
   return (
@@ -1331,7 +1363,7 @@ function Heatmap({ grid, max }: { grid: number[][]; max: number }) {
                 return (
                   <div
                     key={h}
-                    title={`${days[dow]} ${String(h).padStart(2, "0")}:00 · ${v} sidvisningar`}
+                    title={`${days[dow]} ${String(h).padStart(2, "0")}:00 · ${v.toFixed(decimals)} sidvisningar`}
                     className="aspect-square rounded-sm border border-border/40"
                     style={{
                       backgroundColor: `color-mix(in oklab, var(--primary) ${Math.round((0.06 + intensity * 0.9) * 100)}%, transparent)`,

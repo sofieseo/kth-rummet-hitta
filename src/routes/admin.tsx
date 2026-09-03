@@ -654,15 +654,15 @@ function AdminPage() {
 
       <main id="main" tabIndex={-1} className="max-w-6xl mx-auto px-4 sm:px-6 py-6 focus-visible:outline-none">
         <Tabs defaultValue="spaces" className="w-full">
-          <TabsList className="mb-6">
-            <TabsTrigger value="spaces">Lokaler</TabsTrigger>
-            <TabsTrigger value="filters">Filteralternativ</TabsTrigger>
-            <TabsTrigger value="landing">Texter</TabsTrigger>
-            
-            <TabsTrigger value="layout">Kortlayout</TabsTrigger>
-            <TabsTrigger value="occupancy">Beläggning</TabsTrigger>
-            <TabsTrigger value="hours">Öppettider</TabsTrigger>
-            <TabsTrigger value="analytics">Statistik</TabsTrigger>
+          <TabsList className="mb-6 flex w-full h-auto flex-wrap justify-start gap-1 p-1 sm:grid sm:grid-cols-7">
+            <TabsTrigger className="flex-1 min-w-[calc(50%-0.25rem)] whitespace-normal px-2 py-2 text-xs leading-tight sm:min-w-0 sm:text-sm" value="spaces">Lokaler</TabsTrigger>
+            <TabsTrigger className="flex-1 min-w-[calc(50%-0.25rem)] whitespace-normal px-2 py-2 text-xs leading-tight sm:min-w-0 sm:text-sm" value="filters">Filteralternativ</TabsTrigger>
+            <TabsTrigger className="flex-1 min-w-[calc(50%-0.25rem)] whitespace-normal px-2 py-2 text-xs leading-tight sm:min-w-0 sm:text-sm" value="landing">Texter</TabsTrigger>
+
+            <TabsTrigger className="flex-1 min-w-[calc(50%-0.25rem)] whitespace-normal px-2 py-2 text-xs leading-tight sm:min-w-0 sm:text-sm" value="layout">Kortlayout</TabsTrigger>
+            <TabsTrigger className="flex-1 min-w-[calc(50%-0.25rem)] whitespace-normal px-2 py-2 text-xs leading-tight sm:min-w-0 sm:text-sm" value="occupancy">Beläggning</TabsTrigger>
+            <TabsTrigger className="flex-1 min-w-[calc(50%-0.25rem)] whitespace-normal px-2 py-2 text-xs leading-tight sm:min-w-0 sm:text-sm" value="hours">Öppettider</TabsTrigger>
+            <TabsTrigger className="flex-1 min-w-[calc(50%-0.25rem)] whitespace-normal px-2 py-2 text-xs leading-tight sm:min-w-0 sm:text-sm" value="analytics">Statistik</TabsTrigger>
           </TabsList>
 
           <TabsContent value="spaces" className="space-y-4">
