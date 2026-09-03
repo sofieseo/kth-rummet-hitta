@@ -1203,9 +1203,35 @@ export function AnalyticsTab({
 
           <Section
             title="Heatmap: veckodag × timme (sidvisningar)"
-            help="Rutnät där varje ruta är en timme en viss veckodag. Mörkare ruta = fler sidvisningar."
+            help="Rutnät där varje ruta är en timme en viss veckodag, summerat över hela den valda perioden. Mörkare ruta = fler sidvisningar. Välj en längre period ovan för att se mönster över flera veckor, och växla till snitt per vecka för att jämföra perioder av olika längd."
           >
-            <Heatmap grid={heatmap.grid} max={heatmap.max} />
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <div className="inline-flex overflow-hidden rounded-full border border-border bg-card text-xs">
+                {(
+                  [
+                    { key: "total", label: "Totalt" },
+                    { key: "avg", label: "Snitt per vecka" },
+                  ] as const
+                ).map((m) => (
+                  <button
+                    key={m.key}
+                    type="button"
+                    onClick={() => setHeatmapMode(m.key)}
+                    className={`px-3 py-1.5 ${heatmapMode === m.key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+              <span className="text-xs text-muted-foreground">
+                {heatmap.weeks.toFixed(1)} veckor i vald period
+              </span>
+            </div>
+            <Heatmap
+              grid={heatmapMode === "avg" ? heatmap.averaged : heatmap.grid}
+              max={heatmapMode === "avg" ? heatmap.maxAvg : heatmap.max}
+              decimals={heatmapMode === "avg" ? 1 : 0}
+            />
           </Section>
         </>
 
