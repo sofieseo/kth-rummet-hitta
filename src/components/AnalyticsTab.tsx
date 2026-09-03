@@ -667,10 +667,13 @@ export function AnalyticsTab({
       const dow = (d.getDay() + 6) % 7; // Mon=0
       grid[dow][d.getHours()]++;
     }
+    const weeks = Math.max(1, (to.getTime() - from.getTime()) / (7 * 24 * 3600 * 1000));
+    const averaged = grid.map((row) => row.map((v) => v / weeks));
     let max = 0;
     for (const row of grid) for (const v of row) if (v > max) max = v;
-    return { grid, max };
-  }, [rows]);
+    return { grid, averaged, weeks, max, maxAvg: max / weeks };
+  }, [rows, from, to]);
+
 
 
 
