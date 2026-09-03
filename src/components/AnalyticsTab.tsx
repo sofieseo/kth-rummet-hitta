@@ -145,6 +145,7 @@ export function AnalyticsTab({
 }) {
 
   const [preset, setPreset] = useState<PresetKey>("7d");
+  const [heatmapMode, setHeatmapMode] = useState<"total" | "avg">("total");
   const [customFrom, setCustomFrom] = useState<Date | undefined>(() => {
     const d = new Date();
     d.setDate(d.getDate() - 6);
