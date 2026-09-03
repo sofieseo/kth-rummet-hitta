@@ -530,17 +530,6 @@ export function AnalyticsTab({
     return items.sort((a, b) => b.demand - a.demand);
   }, [rows, spaces, categories, filterOptions, isGroupRoom]);
 
-  const demandSupplyByCategory = useMemo(() => {
-    const map: Record<string, DemandSupplyItem[]> = {};
-    for (const item of demandSupply) {
-      (map[item.categoryLabel] ??= []).push(item);
-    }
-    for (const list of Object.values(map)) {
-      list.sort((a, b) => b.demand - a.demand);
-    }
-    return map;
-  }, [demandSupply]);
-
   /** Efterfrågan vs utbud för hela filterkombinationer (inte enskilda filter). */
   const comboDemandSupply = useMemo<DemandSupplyItem[]>(() => {
     const combos = new Map<string, { label: string; filters: Filters; count: number }>();
@@ -741,7 +730,7 @@ export function AnalyticsTab({
             disabled={rows.length === 0}
             onClick={() =>
               exportAnalyticsToExcel(rows, from, to, {
-                demandSupply,
+                demandSupply: comboDemandSupply,
                 emptyWithAlternatives: emptyResultsWithSuggestions,
                 trend: trendData,
               })
