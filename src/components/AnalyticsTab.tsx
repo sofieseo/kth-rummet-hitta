@@ -533,13 +533,52 @@ export function AnalyticsTab({
   const demandSupplyByCategory = useMemo(() => {
     const map: Record<string, DemandSupplyItem[]> = {};
     for (const item of demandSupply) {
-      (map[item.categoryKey] ??= []).push(item);
+      (map[item.categoryLabel] ??= []).push(item);
     }
     for (const list of Object.values(map)) {
       list.sort((a, b) => b.demand - a.demand);
     }
     return map;
   }, [demandSupply]);
+
+  /** Efterfrågan vs utbud för hela filterkombinationer (inte enskilda filter). */
+  const comboDemandSupply = useMemo<DemandSupplyItem[]>(() => {
+    const combos = new Map<string, { label: string; filters: Filters; count: number }>();
+    for (const r of rows) {
+      if (r.event_type !== "filter_change") continue;
+      const p = (r.payload ?? {}) as Record<string, unknown>;
+      const filters = buildFiltersFromPayload(p);
+      const parts: string[] = [];
+      if (filters.query) parts.push(`Sökord: ”${filters.query}”`);
+      if (p.spaceKind) parts.push(`${categoryLabelFor("spaceKind", categories)}: ${valueLabelFor("spaceKind", String(p.spaceKind), filterOptions)}`);
+      if (filters.workMode) parts.push(`${categoryLabelFor("workMode", categories)}: ${filters.workMode}`);
+      if (filters.groupSize) parts.push(`${categoryLabelFor("groupSize", categories)}: ${filters.groupSize}`);
+      if (filters.freeOnly) parts.push("Endast lediga grupprum");
+      for (const [cat, vals] of Object.entries(filters.byCategory)) {
+        for (const v of (vals ?? []).slice().sort()) {
+          parts.push(`${categoryLabelFor(cat, categories)}: ${valueLabelFor(cat, v, filterOptions)}`);
+        }
+      }
+      // Endast riktiga kombinationer (minst två aktiva filter)
+      if (parts.length < 2) continue;
+      const label = parts.join(" · ");
+      const existing = combos.get(label);
+      if (existing) existing.count++;
+      else combos.set(label, { label, filters, count: 1 });
+    }
+    return Array.from(combos.values())
+      .map((c) => ({
+        categoryKey: "combo",
+        categoryLabel: "Filterkombination",
+        valueKey: c.label,
+        valueLabel: c.label,
+        demand: c.count,
+        supply: countMatchingSpaces(c.filters, spaces, categories, isGroupRoom),
+      }))
+      .sort((a, b) => b.demand - a.demand)
+      .slice(0, 12);
+  }, [rows, spaces, categories, filterOptions, isGroupRoom]);
+
 
   const emptyResultsWithSuggestions = useMemo<EmptyComboWithSuggestion[]>(() => {
     const combos = new Map<
