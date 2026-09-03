@@ -64,6 +64,8 @@ const PRESETS = [
   { key: "24h", label: "24 timmar", hours: 24 },
   { key: "7d", label: "7 dagar", hours: 24 * 7 },
   { key: "30d", label: "30 dagar", hours: 24 * 30 },
+  { key: "90d", label: "90 dagar", hours: 24 * 90 },
+  { key: "365d", label: "12 månader", hours: 24 * 365 },
   { key: "custom", label: "Anpassad", hours: 0 },
 ] as const;
 type PresetKey = (typeof PRESETS)[number]["key"];
